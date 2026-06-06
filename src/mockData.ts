@@ -1,4 +1,4 @@
-import { Hive, Inspection, Harvest, Product, Order, Expense } from "./types";
+import { Hive, Inspection, Harvest, Product, Order, Expense, BlogPost } from "./types";
 
 export const initialHives: Hive[] = [
   {
@@ -245,3 +245,66 @@ export const initialOrders: Order[] = [
     shippingAddress: "Kasarani Estate, Lane 10, Nairobi"
   }
 ];
+
+export const initialBlogPosts: BlogPost[] = [
+  {
+    id: "blog-1",
+    title: "Understanding the Baringo Acacia Honey Nectar Flow",
+    content: "The Acacia blossom season is one of the most critical times of the year for Kenyan beekeepers. When the rainy season tapers off and the arid valleys of Baringo begin to heat up, the Acacia tortilis and Acacia senegal trees release an incredibly sweet, high-grade pale nectar.\n\nTo capture this pure single-source crop, beekeepers must ensure that their colonies are strong enough and that they place empty honey supers on the hives just as the first yellow and white pom-pom flowers appear. If placed too early, the bees might consume or mix the honey with wildflower stocks; if too late, you miss the intense two-week window of peak secretion.",
+    author: "Barnaby the Apiary Advisor",
+    category: "Honey Harvests",
+    status: "Published",
+    publishedAt: "2026-05-18",
+    createdAt: "2026-05-18",
+    updatedAt: "2026-05-18",
+    likes: 12,
+    comments: [
+      {
+        id: "comm-1",
+        authorName: "Kamau N.",
+        text: "This is perfect timing! My hives in Baringo just started showing heavy traffic around the acacia trees. Thanks for the breakdown.",
+        date: "2026-05-19"
+      },
+      {
+        id: "comm-2",
+        authorName: "Grace Wanjiku",
+        text: "Is there a specific moisture percent difference for Acacia honey? My last extraction was at 17.5% which was light and delicious.",
+        date: "2026-05-20"
+      }
+    ]
+  },
+  {
+    id: "blog-2",
+    title: "Organic Pest Control: Preventing Varroa Destructor Intrusions",
+    content: "Varroa mites are the bane of honey bees worldwide. Although the African Honey Bee (*Apis mellifera scutellata*) shows higher tolerance and grooming behavior compared to European cousins, regular monitoring is necessary to keep colonies at peak strength.\n\nAt HiveGlobal, we advocate for non-chemical treatments wherever possible. Placing sticky bottom boards during inspections provides a quick daily mite-drop assessment. Other highly successful techniques include:\n- **Screened Bottom Boards**: Promotes natural ventilation and drops mites listlessly to the desert sand below.\n- **Powdered Sugar Dusting**: Safely encourages intense grooming behavior among worker bees, causing mites to dislodge cleanly without residue in the honey stores.\n- **Drone Brood Sacrifice**: Strategically removing capped drone frames since mites prefer laying eggs next to drone larvae.",
+    author: "Senior Apiary Field Officer",
+    category: "Bee Health",
+    status: "Published",
+    publishedAt: "2026-06-01",
+    createdAt: "2026-06-01",
+    updatedAt: "2026-06-01",
+    likes: 8,
+    comments: [
+      {
+        id: "comm-3",
+        authorName: "Samson Kiprop",
+        text: "The powdered sugar method works magic. It is safe, organic, and the honey stays completely pure.",
+        date: "2026-06-02"
+      }
+    ]
+  },
+  {
+    id: "blog-3",
+    title: "Winterization and Protection from Highland Cold Fronts",
+    content: "Our Aberdare forest apiaries sit at elevated altitudes where cold nights and torrential morning downpours are common. Bees generate heat inside by cluster-shivering, keeping the brood nest at a constant 34-35°C, but they consume massive amounts of honey stores to sustain this energy.\n\nTo safeguard these cold-threatened highland colonies, local farmers should reduce the entrance sizing to keep drafts out, ensure clear upward ventilation to avoid damp condensation (which is deadlier than dry cold), and supply supplemental feeding of thick 2:1 sugar syrup or sugar patties if they discover light weight supers.",
+    author: "Highland Cooperative Lead",
+    category: "Beekeeping",
+    status: "Draft",
+    publishedAt: null,
+    createdAt: "2026-06-04",
+    updatedAt: "2026-06-04",
+    likes: 0,
+    comments: []
+  }
+];
+

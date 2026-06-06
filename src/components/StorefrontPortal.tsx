@@ -9,7 +9,7 @@ import {
   CheckCircle, ArrowRight, Heart, Award, FileText, Gift,
   BookOpen, Sparkles, Filter, ShieldCheck, Mail, Pin, CreditCard, ChevronRight
 } from "lucide-react";
-import { Product, Order, OrderItem } from "../types";
+import { Product, Order, OrderItem, BlogPost } from "../types";
 
 export interface BuybackRequest {
   id: string;
@@ -28,9 +28,20 @@ interface StorefrontPortalProps {
   onAddOrder: (order: Order) => void;
   orders: Order[];
   lang?: 'EN' | 'SW';
+  blogPosts: BlogPost[];
+  onAddComment: (postId: string, comment: any) => void;
+  onLikePost: (postId: string) => void;
 }
 
-export function StorefrontPortal({ products, onAddOrder, orders, lang = 'EN' }: StorefrontPortalProps) {
+export function StorefrontPortal({ 
+  products, 
+  onAddOrder, 
+  orders, 
+  lang = 'EN',
+  blogPosts = [],
+  onAddComment,
+  onLikePost
+}: StorefrontPortalProps) {
   // Navigation tabs within Storefront
   const [activeSubTab, setActiveSubTab] = useState<'shop' | 'buyback' | 'learn' | 'recipes' | 'orders'>('shop');
   const [searchTerm, setSearchTerm] = useState("");
@@ -129,8 +140,33 @@ export function StorefrontPortal({ products, onAddOrder, orders, lang = 'EN' }: 
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
 
+  // Visitor Blog & Education state variables
+  const [visitorBlogSearch, setVisitorBlogSearch] = useState("");
+  const [visitorBlogCategory, setVisitorBlogCategory] = useState("All");
+  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [visitorCommentName, setVisitorCommentName] = useState("");
+  const [visitorCommentText, setVisitorCommentText] = useState("");
+  const [visitorActiveCommentPostId, setVisitorActiveCommentPostId] = useState<string | null>(null);
+
   // Honey pairing state
   const [pairingFood, setPairingFood] = useState<string>("Charcuterie Board");
+
+  const handleVisitorCommentSubmit = (e: React.FormEvent, postId: string) => {
+    e.preventDefault();
+    if (!visitorCommentName.trim() || !visitorCommentText.trim()) return;
+
+    const newComment = {
+      id: "comm-" + Date.now(),
+      authorName: visitorCommentName,
+      text: visitorCommentText,
+      date: new Date().toISOString().split('T')[0]
+    };
+
+    onAddComment(postId, newComment);
+    setVisitorCommentName("");
+    setVisitorCommentText("");
+    setVisitorActiveCommentPostId(null);
+  };
 
   // Filtering products
   const filteredProducts = products.filter(p => {
@@ -901,6 +937,236 @@ export function StorefrontPortal({ products, onAddOrder, orders, lang = 'EN' }: 
               <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
                 Bees are critical for 1/3 of every single bite of food we swallow. By supporting local managed apiaries, you are actively backing local biodiversity corridors!
               </p>
+            </div>
+          </div>
+          
+          {/* Beekeeping Blog Publications - Full Width Section at the Bottom of Learn tab */}
+          <div className="md:col-span-2 border-t border-amber-100 pt-8 mt-4 space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h3 className="font-extrabold text-gray-950 text-base flex items-center gap-2">
+                  <span>🐝</span>
+                  {t("The Bee Farmer's Journal & Publications", "Makala na Shajara ya Mfugaji wa Nyuki")}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  {t("Explore scientific articles, honey harvesting schedules, and hives health reports directly from our organic apiary leads.", 
+                     "Soma makala za kitaalamu, ratiba za uvunaji asali na ripoti za afya ya mizinga yetu moja kwa moja kutoka kwa wakulima wa mizinga.")}
+                </p>
+              </div>
+
+              {/* Blog Filter & Search on learn tab */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <input
+                  type="text"
+                  placeholder={t("Search articles...", "Tafuta makala...")}
+                  value={visitorBlogSearch}
+                  onChange={(e) => setVisitorBlogSearch(e.target.value)}
+                  className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 placeholder:text-stone-400"
+                />
+                
+                <select
+                  value={visitorBlogCategory}
+                  onChange={(e) => setVisitorBlogCategory(e.target.value)}
+                  className="bg-stone-50 border border-stone-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 text-stone-750"
+                >
+                  <option value="All">{t("All Topics", "Mada Zote")}</option>
+                  <option value="Beekeeping">{t("Beekeeping", "Ufugaji Nyuki")}</option>
+                  <option value="Honey Harvests">{t("Honey Harvests", "Mavuno ya Asali")}</option>
+                  <option value="Bee Health">{t("Bee Health", "Afya ya Nyuki")}</option>
+                </select>
+              </div>
+            </div>
+
+            {/* List of articles */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {blogPosts
+                .filter(post => post.status === 'Published') // ONLY show published posts for guests
+                .filter(post => {
+                  const matchesSearch = post.title.toLowerCase().includes(visitorBlogSearch.toLowerCase()) || 
+                    post.content.toLowerCase().includes(visitorBlogSearch.toLowerCase());
+                  const matchesCategory = visitorBlogCategory === "All" || post.category === visitorBlogCategory;
+                  return matchesSearch && matchesCategory;
+                })
+                .map(post => {
+                  const isExpanded = expandedPostId === post.id;
+                  const categoryColors = post.category === "Bee Health" 
+                    ? "bg-red-50 text-red-700 border-red-100" 
+                    : post.category === "Honey Harvests"
+                      ? "bg-amber-50 text-amber-800 border-amber-150"
+                      : "bg-emerald-50 text-emerald-800 border-emerald-100";
+
+                  return (
+                    <div 
+                      key={post.id} 
+                      className={`bg-white border border-stone-150/80 rounded-3xl overflow-hidden shadow-3xs hover:shadow-2xs transition-all duration-300 flex flex-col justify-between ${
+                        isExpanded ? 'md:col-span-2 border-amber-400 p-6' : 'p-5'
+                      }`}
+                    >
+                      <div className="space-y-4">
+                        {/* Thumbnail cover if expanded or simple layout */}
+                        {!isExpanded && post.imageUrl && (
+                          <div className="h-32 w-full rounded-2xl overflow-hidden mb-1 relative bg-stone-100">
+                            <img src={post.imageUrl} alt={post.title} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between">
+                          <span className={`px-2 py-0.5 rounded-md border text-[9px] font-bold tracking-wider uppercase ${categoryColors}`}>
+                            {t(post.category, post.category === "Beekeeping" ? "Ufugaji Nyuki" : post.category === "Honey Harvests" ? "Mavuno ya Asali" : "Afya ya Nyuki")}
+                          </span>
+                          <span className="text-[10px] text-stone-400 font-mono">
+                            {post.publishedAt || post.createdAt}
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="font-extrabold text-stone-900 text-sm md:text-base leading-snug">
+                            {post.title}
+                          </h4>
+                          <span className="text-[10px] font-medium text-stone-400 block mt-1 font-mono">
+                            {t("By", "Mwandishi:")} {post.author}
+                          </span>
+                        </div>
+
+                        {/* Article body truncation vs expansion */}
+                        <div className="text-xs text-stone-600 leading-relaxed space-y-3 font-sans">
+                          {isExpanded ? (
+                            <div className="whitespace-pre-line bg-amber-50/20 p-4 border border-amber-100/30 rounded-2xl">
+                              {post.content}
+                            </div>
+                          ) : (
+                            <p className="line-clamp-4">{post.content}</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Footer interaction bar */}
+                      <div className="mt-5 pt-3.5 border-t border-stone-100 flex flex-col space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4 text-xs font-mono text-stone-400 font-bold">
+                            <button
+                              type="button"
+                              onClick={() => onLikePost(post.id)}
+                              className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 hover:text-rose-850 rounded-lg transition duration-150 cursor-pointer"
+                            >
+                              <span>❤️</span>
+                              <span>{post.likes}</span>
+                            </button>
+                            
+                            <span className="flex items-center gap-1 text-stone-500">
+                              <span>💬</span>
+                              <span>{post.comments.length} {t("Comments", "Maoni")}</span>
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setExpandedPostId(isExpanded ? null : post.id)}
+                            className="text-xs font-extrabold text-[#1A4D2E] hover:text-amber-500 flex items-center gap-1 transition cursor-pointer"
+                          >
+                            <span>{isExpanded ? t("Collapse Story", "Kunja Makala") : t("Read Full Story", "Soma Hadithi Kamili")}</span>
+                            <span>{isExpanded ? "▲" : "▼"}</span>
+                          </button>
+                        </div>
+
+                        {/* Expanded details: Comments area & Add a guest comment */}
+                        {isExpanded && (
+                          <div className="bg-amber-50/25 border border-[#ECE3D4] p-4 md:p-5 rounded-2xl space-y-4 animate-in fade-in duration-200">
+                            {/* Previous comments list */}
+                            <div>
+                              <h5 className="text-[10px] font-black text-amber-900 uppercase tracking-widest font-mono mb-3">
+                                💬 {t("Guest Discussions & Reviews", "Maoni na Mijadala")} ({post.comments.length})
+                              </h5>
+
+                              {post.comments.length === 0 ? (
+                                <p className="text-[11px] text-stone-400 font-bold italic py-2">
+                                  {t("Be the first to share your thoughts on this apiculture topic!", "Kuwa wa kwanza kutoa jibu au maoni yako!")}
+                                </p>
+                              ) : (
+                                <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                                  {post.comments.map(comm => (
+                                    <div key={comm.id} className="bg-white border border-stone-150/60 p-3 rounded-2xl space-y-1 shadow-3xs">
+                                      <div className="flex items-center justify-between text-[11px] font-extrabold text-stone-750">
+                                        <span className="font-sans text-stone-900">👤 {comm.authorName}</span>
+                                        <span className="font-mono text-[9px] text-[#FF8C00] font-bold">{comm.date}</span>
+                                      </div>
+                                      <p className="text-xs text-stone-650 font-sans leading-snug">
+                                        {comm.text}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Add guest comment form */}
+                            <div className="pt-3 border-t border-[#ECE3D4] space-y-3">
+                              <h5 className="text-[10px] font-black text-[#1A4D2E] uppercase tracking-widest font-mono flex items-center gap-1">
+                                <span>✍️</span> {t("Leave an Organic Comment", "Acha Maoni Yako")}
+                              </h5>
+
+                              <form 
+                                onSubmit={(e) => handleVisitorCommentSubmit(e, post.id)}
+                                className="space-y-3 text-xs"
+                              >
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-[10px] text-stone-500 font-bold mb-1">
+                                      {t("Your Name *", "Jina Lako *")}
+                                    </label>
+                                    <input
+                                      type="text"
+                                      required
+                                      value={visitorActiveCommentPostId === post.id ? visitorCommentName : ""}
+                                      onChange={(e) => {
+                                        setVisitorActiveCommentPostId(post.id);
+                                        setVisitorCommentName(e.target.value);
+                                      }}
+                                      placeholder={t("e.g., Mwangi K.", "Jina lako")}
+                                      className="w-full bg-white border border-stone-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-400 text-stone-800"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="block text-[10px] text-stone-500 font-bold mb-1">
+                                    {t("Your Review / Comment *", "Maoni yako *")}
+                                  </label>
+                                  <textarea
+                                    required
+                                    rows={3}
+                                    value={visitorActiveCommentPostId === post.id ? visitorCommentText : ""}
+                                    onChange={(e) => {
+                                      setVisitorActiveCommentPostId(post.id);
+                                      setVisitorCommentText(e.target.value);
+                                    }}
+                                    placeholder={t("Share your queries or local experiences on this post...", "Andika maoni yako hapa...")}
+                                    className="w-full bg-white border border-stone-200 rounded-xl px-3 py-1.5 text-xs outline-none focus:ring-[#F4B400] text-stone-800 resize-none"
+                                  />
+                                </div>
+
+                                <button
+                                  type="submit"
+                                  className="px-4 py-1.5 bg-[#1A4D2E] hover:bg-amber-500 text-white hover:text-black font-extrabold rounded-xl text-xs transition shadow-3xs cursor-pointer"
+                                >
+                                  {t("Submit Comment", "Tuma Maoni")}
+                                </button>
+                              </form>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+              {blogPosts.filter(post => post.status === 'Published').length === 0 && (
+                <div className="col-span-full py-8 text-center bg-stone-50 border border-dashed border-stone-200 rounded-3xl">
+                  <p className="text-xs text-stone-400 font-bold font-mono">
+                    {t("Our apiary advisors are preparing quality extension papers. Visit again soon!", "Ripoti na makala mpya zitaongezwa hivi karibuni na jopo la wataalamu!")}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

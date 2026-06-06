@@ -92,3 +92,25 @@ export interface ChatMessage {
   text: string;
   timestamp: string;
 }
+
+export interface BlogComment {
+  id: string;
+  authorName: string;
+  text: string;
+  date: string;
+}
+
+export interface BlogPost {
+  id: string;
+  title: string;
+  content: string;
+  author: string;
+  category: 'Beekeeping' | 'Honey Harvests' | 'Bee Health';
+  status: 'Draft' | 'Published';
+  publishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  comments: BlogComment[];
+  imageUrl?: string;
+  likes: number;
+}

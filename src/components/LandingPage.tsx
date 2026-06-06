@@ -11,9 +11,10 @@ interface LandingPageProps {
   onStartTrial: () => void;
   onBrowseMarketplace: () => void;
   lang?: 'EN' | 'SW';
+  onExploreBlog?: () => void;
 }
 
-export function LandingPage({ products, onStartTrial, onBrowseMarketplace, lang = 'EN' }: LandingPageProps) {
+export function LandingPage({ products, onStartTrial, onBrowseMarketplace, lang = 'EN', onExploreBlog }: LandingPageProps) {
   const [activeFaq, setActiveFaq] = useState<number | null>(null);
   const [profitInpKg, setProfitInpKg] = useState<number>(45);
   const [activeTab, setActiveTab] = useState<'farmers' | 'buyers'>('farmers');
@@ -667,6 +668,32 @@ export function LandingPage({ products, onStartTrial, onBrowseMarketplace, lang 
             );
           })}
         </div>
+      </section>
+
+
+      {/* KNOWLEDGE GAZETTE BLOG SECTION */}
+      <section className="bg-gradient-to-r from-amber-400 to-[#F4B400] text-[#1A4D2E] rounded-3xl p-6 md:p-8 flex flex-col md:flex-row items-center justify-between gap-6 border-2 border-[#1A4D2E]/20 shadow-xs">
+        <div className="space-y-2 flex-1">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 bg-[#1A4D2E]/10 border border-[#1A4D2E]/20 rounded-full text-[10px] font-black uppercase font-mono tracking-wider">
+            💡 {t("Interactive Learning Hive", "Gazeti la Maarifa ya Kisasa")}
+          </div>
+          <h2 className="text-xl md:text-3xl font-display font-black leading-tight uppercase tracking-tight">
+            {t("Explore Beekeeping Best Practices and Harvesting Trends", "Soma Makala ya Ufugaji na Mavuno ya Asali")}
+          </h2>
+          <p className="text-xs text-[#1A4D2E]/80 font-sans max-w-2xl leading-relaxed">
+            {t(
+              "Read authentic research articles published by regional honey guides and rural farming associations. Learn how to identify premium nectar trees, construct organic pest traps, and secure healthy colony yields.",
+              "Pata elimu sahihi inayolinda makundi yako ya nyuki dhidi ya vimelea na mabadiliko ya nchi nchini Kenya moja kwa moja kutoka kwa wataalamu!"
+            )}
+          </p>
+        </div>
+        <button 
+          onClick={onExploreBlog}
+          className="px-6 py-3.5 bg-[#1A4D2E] hover:bg-white text-white hover:text-black text-xs font-black uppercase rounded-2xl tracking-wider transition duration-150 shrink-0 shadow-md flex items-center gap-2 cursor-pointer border-2 border-transparent hover:border-[#1A4D2E]"
+        >
+          <span>{t("Open Knowledge Gazette", "Fungua Gazeti la Nyuki")}</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
       </section>
 
 

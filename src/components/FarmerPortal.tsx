@@ -13,7 +13,8 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, BarChart, Bar, AreaChart, Area 
 } from "recharts";
-import { Hive, Inspection, Harvest, Order, Expense } from "../types";
+import { Hive, Inspection, Harvest, Order, Expense, BlogPost } from "../types";
+import { BookOpen, Edit3, MessageCircle, ThumbsUp, Check } from "lucide-react";
 
 interface FarmerPortalProps {
   hives: Hive[];
@@ -28,6 +29,12 @@ interface FarmerPortalProps {
   orders: Order[];
   onUpdateOrderStatus: (ordId: string, status: Order['status']) => void;
   lang?: 'EN' | 'SW';
+  blogPosts: BlogPost[];
+  onAddBlogPost: (p: BlogPost) => void;
+  onUpdateBlogPost: (p: BlogPost) => void;
+  onDeleteBlogPost: (id: string) => void;
+  onAddComment: (postId: string, comment: any) => void;
+  onLikePost: (postId: string) => void;
 }
 
 const COUNTY_WEATHER_COORDINATES: Record<string, { lat: number; lon: number; name: string; nameSw: string }> = {
@@ -44,10 +51,27 @@ export function FarmerPortal({
   harvests, onAddHarvest, 
   expenses = [], onAddExpense,
   orders, onUpdateOrderStatus,
-  lang = 'EN'
+  lang = 'EN',
+  blogPosts = [],
+  onAddBlogPost,
+  onUpdateBlogPost,
+  onDeleteBlogPost,
+  onAddComment,
+  onLikePost
 }: FarmerPortalProps) {
   // Navigation tabs of farmer manager
-  const [activeSubTab, setActiveSubTab] = useState<'hives' | 'inspections' | 'harvests' | 'expenses' | 'orders' | 'sales' | 'analytics'>('hives');
+  const [activeSubTab, setActiveSubTab] = useState<'hives' | 'inspections' | 'harvests' | 'expenses' | 'orders' | 'sales' | 'analytics' | 'blog'>('hives');
+
+  // Blog management states
+  const [blogShowForm, setBlogShowForm] = useState(false);
+  const [blogEditingId, setBlogEditingId] = useState<string | null>(null);
+  const [blogTitle, setBlogTitle] = useState("");
+  const [blogContent, setBlogContent] = useState("");
+  const [blogCategory, setBlogCategory] = useState<'Beekeeping' | 'Honey Harvests' | 'Bee Health'>('Beekeeping');
+  const [blogStatus, setBlogStatus] = useState<'Draft' | 'Published'>('Published');
+  const [blogImageUrl, setBlogImageUrl] = useState("");
+  const [blogSearch, setBlogSearch] = useState("");
+  const [blogFilterCategory, setBlogFilterCategory] = useState<string>("All");
 
   // Weather state
   const [weatherCounty, setWeatherCounty] = useState<string>(() => {
@@ -393,6 +417,67 @@ export function FarmerPortal({
   })();
 
   const buybackRevenueValuation = totalHoneyLast6Months * 1280;
+
+  const handleSaveBlogPost = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!blogTitle.trim() || !blogContent.trim()) return;
+
+    if (blogEditingId) {
+      const original = blogPosts.find(p => p.id === blogEditingId);
+      if (original) {
+        const updatedPost: BlogPost = {
+          ...original,
+          title: blogTitle,
+          content: blogContent,
+          category: blogCategory,
+          status: blogStatus,
+          imageUrl: blogImageUrl || undefined,
+          publishedAt: blogStatus === 'Published' 
+            ? (original.publishedAt || new Date().toISOString().split('T')[0]) 
+            : null,
+          updatedAt: new Date().toISOString().split('T')[0],
+        };
+        onUpdateBlogPost(updatedPost);
+      }
+    } else {
+      const newPost: BlogPost = {
+        id: "blog-" + Date.now(),
+        title: blogTitle,
+        content: blogContent,
+        author: lang === 'SW' ? "Mkulima Mtendaji" : "Executive Apiary Farmer",
+        category: blogCategory,
+        status: blogStatus,
+        publishedAt: blogStatus === 'Published' ? new Date().toISOString().split('T')[0] : null,
+        createdAt: new Date().toISOString().split('T')[0],
+        updatedAt: new Date().toISOString().split('T')[0],
+        comments: [],
+        likes: 0,
+        imageUrl: blogImageUrl || undefined
+      };
+      onAddBlogPost(newPost);
+    }
+    handleResetBlogForm();
+  };
+
+  const handleEditBlogPostClick = (post: BlogPost) => {
+    setBlogEditingId(post.id);
+    setBlogTitle(post.title);
+    setBlogContent(post.content);
+    setBlogCategory(post.category);
+    setBlogStatus(post.status);
+    setBlogImageUrl(post.imageUrl || "");
+    setBlogShowForm(true);
+  };
+
+  const handleResetBlogForm = () => {
+    setBlogEditingId(null);
+    setBlogTitle("");
+    setBlogContent("");
+    setBlogCategory("Beekeeping");
+    setBlogStatus("Published");
+    setBlogImageUrl("");
+    setBlogShowForm(false);
+  };
 
   const handleCreateHive = (e: React.FormEvent) => {
     e.preventDefault();
@@ -819,6 +904,18 @@ export function FarmerPortal({
         >
           <TrendingUp className="w-3.5 h-3.5" />
           <span>{t("Performance & Analytics", "Uchambuzi wa Uzalishaji")}</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('blog')}
+          className={`px-4 py-2.5 font-bold text-xs shrink-0 rounded-t-xl transition duration-150 flex items-center gap-1.5 ${activeSubTab === 'blog' ? 'bg-[#F4B400] text-black shadow-sm' : 'text-gray-450 hover:text-amber-400'}`}
+        >
+          <BookOpen className="w-3.5 h-3.5" />
+          <span>{t("Beekeeping Blog", "Makala na Elimu")}</span>
+          {blogPosts.length > 0 && (
+            <span className="bg-amber-900 text-white text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+              {blogPosts.length}
+            </span>
+          )}
         </button>
       </div>
 
@@ -2169,6 +2266,337 @@ export function FarmerPortal({
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeSubTab === 'blog' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-amber-100">
+            <div>
+              <h3 className="font-extrabold text-gray-950 text-base flex items-center gap-2">
+                <span>📚</span>
+                {t("Beekeeping Blog & Extension Agency", "Kituo cha Makala na Elimu ya Ufugaji Nyuki")}
+              </h3>
+              <p className="text-xs text-gray-500">
+                {t("Publish extension articles, hive health journals, and harvest tips to educate customers and guests.", 
+                   "Andika makala, ripoti za afya ya nyuki na mbinu za uvunaji ili kuelimisha wateja na wageni wako.")}
+              </p>
+            </div>
+            
+            <button
+              onClick={() => {
+                if (blogShowForm) {
+                  handleResetBlogForm();
+                } else {
+                  setBlogShowForm(true);
+                }
+              }}
+              className="px-4 py-2 bg-[#1A4D2E] hover:bg-[#F4B400] text-white hover:text-black font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition duration-150 cursor-pointer self-start md:self-auto"
+            >
+              {blogShowForm ? "✕" : <Plus className="w-4 h-4" />}
+              <span>{blogShowForm ? t("Cancel", "Futa") : t("Write New Post", "Andika Makala Mpya")}</span>
+            </button>
+          </div>
+
+          {/* Form Block (Write / Edit) */}
+          {blogShowForm && (
+            <div className="bg-amber-50/40 border border-amber-200 p-5 md:p-6 rounded-3xl shadow-xs space-y-4 animate-in slide-in-from-top-4 duration-300">
+              <h4 className="font-extrabold text-[#1A4D2E] text-xs uppercase font-mono tracking-wider">
+                {blogEditingId 
+                  ? t("📝 Edit Beekeeping Publication", "📝 Hariri Makala ya Ufugaji Nyuki") 
+                  : t("✍️ Create New Beekeeping Publication", "✍️ Andaa Makala Mpya ya Ufugaji Nyuki")}
+              </h4>
+
+              <form onSubmit={handleSaveBlogPost} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      {t("Title / Heading *", "Kichwa cha Habari *")}
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={blogTitle}
+                      onChange={(e) => setBlogTitle(e.target.value)}
+                      placeholder={t("e.g., 5 Ways to Keep Queen Bees Active", "Mf. Njia 5 za Kuweka Malkia Akiwa Imara")}
+                      className="w-full bg-white border border-amber-200/80 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        {t("Category *", "Kundi / Jamii *")}
+                      </label>
+                      <select
+                        value={blogCategory}
+                        onChange={(e) => setBlogCategory(e.target.value as any)}
+                        className="w-full bg-white border border-amber-200/80 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none"
+                      >
+                        <option value="Beekeeping">{t("Beekeeping", "Ufugaji Nyuki")}</option>
+                        <option value="Honey Harvests">{t("Honey Harvests", "Mavuno ya Asali")}</option>
+                        <option value="Bee Health">{t("Bee Health", "Afya ya Nyuki")}</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">
+                        {t("Publication Status *", "Hali ya Makala *")}
+                      </label>
+                      <select
+                        value={blogStatus}
+                        onChange={(e) => setBlogStatus(e.target.value as any)}
+                        className="w-full bg-white border border-amber-200/80 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none"
+                      >
+                        <option value="Published">{t("Live & Published", "Imechapishwa Moja kwa Moja")}</option>
+                        <option value="Draft">{t("Draft (Internal Only)", "Rasimu ya Ndani Pekee")}</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      {t("Cover Image URL (Optional)", "Anwani ya Picha - Sio Lazima")}
+                    </label>
+                    <input
+                      type="url"
+                      value={blogImageUrl}
+                      onChange={(e) => setBlogImageUrl(e.target.value)}
+                      placeholder="https://images.unsplash.com/photo-..."
+                      className="w-full bg-white border border-amber-200/80 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-3 flex flex-col justify-between">
+                  <div className="flex-1 flex flex-col">
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      {t("Article Content (Markdown supported) *", "Maelezo ya Makala *")}
+                    </label>
+                    <textarea
+                      required
+                      value={blogContent}
+                      onChange={(e) => setBlogContent(e.target.value)}
+                      rows={6}
+                      placeholder={t("Write detailed observations, guidance points, or harvest results...", "Andika maelezo ya kina, ushauri, kiasi kilichovunwa, n.k...")}
+                      className="w-full flex-1 bg-white border border-amber-200/80 rounded-xl px-3 py-2 text-xs focus:ring-1 focus:ring-amber-500 outline-none resize-none animate-none"
+                    />
+                  </div>
+
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleResetBlogForm}
+                      className="px-3.5 py-1.5 border border-gray-300 hover:bg-gray-100 text-gray-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                    >
+                      {t("Cancel", "Ghairi")}
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-1.5 bg-amber-500 hover:bg-amber-600 text-black font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>{blogEditingId ? t("Save Changes", "Hifadhi Maandishi") : t("Publish Post", "Chapisha Makala")}</span>
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {/* Search and Category Filtering Bar */}
+          <div className="bg-white border border-amber-100 p-4 rounded-3xl shadow-3xs flex flex-col sm:flex-row items-center gap-3 justify-between">
+            <div className="w-full sm:w-72 relative">
+              <input
+                type="text"
+                placeholder={t("Search publications...", "Tafuta makala...")}
+                value={blogSearch}
+                onChange={(e) => setBlogSearch(e.target.value)}
+                className="w-full bg-amber-50/30 border border-amber-100 rounded-xl pl-8 pr-3 py-1.5 text-xs focus:ring-1 focus:ring-amber-400 outline-none text-gray-800"
+              />
+              <span className="absolute left-2.5 top-2 text-[#F4B400]">🔍</span>
+            </div>
+
+            <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider font-mono shrink-0">
+                {t("Filter:", "Chuja:")}
+              </span>
+              {["All", "Beekeeping", "Honey Harvests", "Bee Health"].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setBlogFilterCategory(cat)}
+                  className={`px-3 py-1 text-[10px] font-extrabold rounded-full transition cursor-pointer ${
+                    blogFilterCategory === cat 
+                      ? "bg-amber-400 text-black shadow-3xs" 
+                      : "bg-gray-100 text-gray-500 hover:bg-[#1A4D2E]/10"
+                  }`}
+                >
+                  {cat === "All" ? t("All Topics", "Mada Zote") : t(cat, cat === "Beekeeping" ? "Ufugaji Nyuki" : cat === "Honey Harvests" ? "Mavuno ya Asali" : "Afya ya Nyuki")}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Main List of Blog Posts */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {blogPosts
+              .filter((post) => {
+                const matchesSearch = post.title.toLowerCase().includes(blogSearch.toLowerCase()) || 
+                  post.content.toLowerCase().includes(blogSearch.toLowerCase());
+                const matchesCategory = blogFilterCategory === "All" || post.category === blogFilterCategory;
+                return matchesSearch && matchesCategory;
+              })
+              .map((post) => {
+                const categoryColor = post.category === "Bee Health" 
+                  ? "bg-red-50 text-red-700 border-red-100" 
+                  : post.category === "Honey Harvests"
+                    ? "bg-amber-50 text-amber-800 border-amber-150"
+                    : "bg-emerald-50 text-emerald-800 border-emerald-100";
+
+                return (
+                  <div key={post.id} className="bg-white border border-amber-100 hover:border-amber-400/50 rounded-3xl overflow-hidden shadow-3xs flex flex-col justify-between transition duration-200 group">
+                    {/* Optional cover thumbnail */}
+                    {post.imageUrl ? (
+                      <div className="h-36 w-full overflow-hidden relative bg-stone-100">
+                        <img 
+                          src={post.imageUrl} 
+                          alt={post.title} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                          referrerPolicy="no-referrer"
+                        />
+                        <div className="absolute top-2.5 right-2.5 bg-black/50 text-white rounded-md text-[9px] uppercase font-bold font-mono px-1.5 py-0.5">
+                          {post.status === 'Published' ? t("LIVE", "IMENYOKA") : t("DRAFT", "RASIMU")}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-36 w-full bg-gradient-to-br from-amber-50 to-orange-50/40 relative flex items-center justify-center p-4">
+                        <span className="text-4xl">
+                          {post.category === "Bee Health" ? "🏥" : post.category === "Honey Harvests" ? "🍯" : "🐝"}
+                        </span>
+                        <div className="absolute top-2.5 right-2.5 bg-black/40 text-white rounded-md text-[9px] uppercase font-bold font-mono px-1.5 py-0.5">
+                          {post.status === 'Published' ? t("LIVE", "IMENYOKA") : t("DRAFT", "RASIMU")}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Blog Card Content Body */}
+                    <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className={`px-2 py-0.5 rounded-md border text-[9px] font-bold uppercase tracking-wider ${categoryColor}`}>
+                            {t(post.category, post.category === "Beekeeping" ? "Ufugaji Nyuki" : post.category === "Honey Harvests" ? "Mavuno ya Asali" : "Afya ya Nyuki")}
+                          </span>
+                          <span className="text-[10px] text-gray-400 font-mono font-medium">
+                            {post.publishedAt || post.createdAt}
+                          </span>
+                        </div>
+
+                        <h4 className="font-extrabold text-gray-950 text-xs sm:text-sm line-clamp-2 leading-tight group-hover:text-[#1A4D2E] transition">
+                          {post.title}
+                        </h4>
+
+                        <p className="text-[11px] text-gray-500 line-clamp-3 leading-relaxed">
+                          {post.content}
+                        </p>
+                      </div>
+
+                      {/* Interaction Summary & Controls */}
+                      <div className="pt-3 border-t border-gray-100 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-3 text-[10px] text-gray-400 font-bold font-mono">
+                          <span className="flex items-center gap-1">
+                            <span>❤️</span> {post.likes}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span>💬</span> {post.comments.length}
+                          </span>
+                        </div>
+
+                        {/* Farmer Controls */}
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleEditBlogPostClick(post)}
+                            className="p-1.5 bg-gray-100 hover:bg-amber-100 text-gray-650 hover:text-amber-950 rounded-lg transition cursor-pointer"
+                            title={t("Edit Post", "Hariri Makala")}
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          
+                          {/* Toggle publish state directly from card */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onUpdateBlogPost({
+                                ...post,
+                                status: post.status === 'Published' ? 'Draft' : 'Published',
+                                publishedAt: post.status === 'Published' ? null : new Date().toISOString().split('T')[0]
+                              });
+                            }}
+                            className={`p-1 px-2 font-mono text-[9px] font-black rounded-lg transition border cursor-pointer ${
+                              post.status === 'Published' 
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 hover:bg-amber-100 hover:text-black hover:border-amber-200' 
+                                : 'bg-gray-100 text-gray-500 border-gray-200 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-200'
+                            }`}
+                            title={post.status === 'Published' ? t("Unpublish", "Badili kuwa Rasimu") : t("Publish Now", "Chapisha sasa")}
+                          >
+                            {post.status === 'Published' ? t("Live", "Hai") : t("Draft", "Rasimu")}
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(t("Are you sure you want to delete this publication?", "Je, una uhakika unataka kufuta makala hii?"))) {
+                                onDeleteBlogPost(post.id);
+                              }
+                            }}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-650 rounded-lg transition cursor-pointer font-bold"
+                            title={t("Delete Post", "Futa Makala")}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Direct Review of visitor comments within Farmer view */}
+                    {post.comments.length > 0 && (
+                      <div className="bg-amber-100/10 border-t border-amber-100/50 p-4 space-y-2 max-h-36 overflow-y-auto text-xs">
+                        <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider font-mono">
+                          {t("Guest Reviews / Comments", "Maoni ya Wageni")} ({post.comments.length})
+                        </span>
+                        <div className="space-y-1.5">
+                          {post.comments.map((comm) => (
+                            <div key={comm.id} className="bg-white border border-[#F2EFE9] rounded-xl p-2 space-y-0.5 shadow-3xs">
+                              <div className="flex items-center justify-between text-[10px] font-bold text-gray-650">
+                                <span className="font-sans">👤 {comm.authorName}</span>
+                                <span className="font-mono text-[8px] text-gray-400">{comm.date}</span>
+                              </div>
+                              <p className="text-[10px] text-gray-650 font-sans leading-tight">
+                                {comm.text}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+            {blogPosts.filter((post) => {
+              const matchesSearch = post.title.toLowerCase().includes(blogSearch.toLowerCase()) || 
+                post.content.toLowerCase().includes(blogSearch.toLowerCase());
+              const matchesCategory = blogFilterCategory === "All" || post.category === blogFilterCategory;
+              return matchesSearch && matchesCategory;
+            }).length === 0 && (
+              <div className="col-span-full py-12 text-center bg-gray-50 border border-dashed border-amber-200 rounded-3xl">
+                <span className="text-4xl">📭</span>
+                <p className="text-xs text-gray-400 font-bold mt-2 font-mono">
+                  {t("No publications match your criteria.", "Hakuna makala yoyote inayolingana na ulivyotafuta.")}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

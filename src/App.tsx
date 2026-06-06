@@ -9,19 +9,20 @@ import {
   ExternalLink, Layers, Award, FileText, ChevronRight, MessageSquare,
   Globe, Home
 } from "lucide-react";
-import { Hive, Inspection, Harvest, Product, Order, Expense } from "./types";
+import { Hive, Inspection, Harvest, Product, Order, Expense, BlogPost } from "./types";
 import { 
   initialHives, initialInspections, initialHarvests, 
-  initialProducts, initialOrders, initialExpenses
+  initialProducts, initialOrders, initialExpenses, initialBlogPosts
 } from "./mockData";
 import { FarmerPortal } from "./components/FarmerPortal";
 import { StorefrontPortal } from "./components/StorefrontPortal";
 import { HiveAssistant } from "./components/HiveAssistant";
 import { LandingPage } from "./components/LandingPage";
+import { BlogPortal } from "./components/BlogPortal";
 
 export default function App() {
   // Main Navigation router state
-  const [viewMode, setViewMode] = useState<'landing' | 'visitor' | 'farmer'>('landing');
+  const [viewMode, setViewMode] = useState<'landing' | 'visitor' | 'farmer' | 'blog'>('landing');
   
   // Enterprise language toggle state (En / Swahili)
   const [lang, setLang] = useState<'EN' | 'SW'>('EN');
@@ -60,6 +61,11 @@ export default function App() {
     return saved ? JSON.parse(saved) : initialOrders;
   });
 
+  const [blogPosts, setBlogPosts] = useState<BlogPost[]>(() => {
+    const saved = localStorage.getItem("beehive_blogposts");
+    return saved ? JSON.parse(saved) : initialBlogPosts;
+  });
+
   // Toggle Barnaby floating companion
   const [showAiAssistant, setShowAiAssistant] = useState(false);
 
@@ -87,6 +93,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("beehive_orders", JSON.stringify(orders));
   }, [orders]);
+
+  useEffect(() => {
+    localStorage.setItem("beehive_blogposts", JSON.stringify(blogPosts));
+  }, [blogPosts]);
 
   // Actions
   const handleAddHive = (newHive: Hive) => {
@@ -152,6 +162,36 @@ export default function App() {
     setExpenses((prev) => [newExpense, ...prev]);
   };
 
+  const handleAddBlogPost = (newPost: BlogPost) => {
+    setBlogPosts((prev) => [newPost, ...prev]);
+  };
+
+  const handleUpdateBlogPost = (updatedPost: BlogPost) => {
+    setBlogPosts((prev) =>
+      prev.map((p) => (p.id === updatedPost.id ? updatedPost : p))
+    );
+  };
+
+  const handleDeleteBlogPost = (postId: string) => {
+    setBlogPosts((prev) => prev.filter((p) => p.id !== postId));
+  };
+
+  const handleAddBlogComment = (postId: string, comment: any) => {
+    setBlogPosts((prev) =>
+      prev.map((p) =>
+        p.id === postId
+          ? { ...p, comments: [...p.comments, comment] }
+          : p
+      )
+    );
+  };
+
+  const handleLikeBlogPost = (postId: string) => {
+    setBlogPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, likes: p.likes + 1 } : p))
+    );
+  };
+
   const handleSyncData = () => {
     setSyncStatus('syncing');
     setTimeout(() => {
@@ -215,7 +255,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* View Mode selection slider toggles (3 tabs: Home Pitch, Marketplace, Farmer App) - Ultra Compact */}
+          {/* View Mode selection slider toggles (4 tabs: Home Pitch, Marketplace, Farmer App, Blog) - Ultra Compact */}
           <div className="bg-black/25 p-0.5 border border-white/10 flex items-center gap-0.5 font-sans rounded-lg">
             <button
               onClick={() => setViewMode('landing')}
@@ -250,6 +290,17 @@ export default function App() {
               <Layers className="w-3 h-3" />
               <span>{lang === 'EN' ? 'Farmer' : 'Jopo'}</span>
             </button>
+            <button
+              onClick={() => setViewMode('blog')}
+              className={`px-2 md:px-3 py-1 text-[10px] font-bold uppercase tracking-tight transition duration-150 flex items-center gap-1 cursor-pointer rounded-md ${
+                viewMode === 'blog' 
+                  ? "bg-[#F4B400] text-black font-extrabold shadow-sm" 
+                  : "text-stone-300 hover:text-white"
+              }`}
+            >
+              <FileText className="w-3 h-3" />
+              <span>{lang === 'EN' ? 'Blog' : 'Blogu'}</span>
+            </button>
           </div>
 
           {/* AI Helper Assistant Button */}
@@ -279,6 +330,7 @@ export default function App() {
             onStartTrial={() => setViewMode('farmer')}
             onBrowseMarketplace={() => setViewMode('visitor')}
             lang={lang}
+            onExploreBlog={() => setViewMode('blog')}
           />
         ) : viewMode === 'visitor' ? (
           <StorefrontPortal 
@@ -286,8 +338,11 @@ export default function App() {
             onAddOrder={handleAddOrder}
             orders={orders}
             lang={lang}
+            blogPosts={blogPosts}
+            onAddComment={handleAddBlogComment}
+            onLikePost={handleLikeBlogPost}
           />
-        ) : (
+        ) : viewMode === 'farmer' ? (
           <FarmerPortal 
             hives={hives}
             onAddHive={handleAddHive}
@@ -300,6 +355,20 @@ export default function App() {
             onAddExpense={handleAddExpense}
             orders={orders}
             onUpdateOrderStatus={handleUpdateOrderStatus}
+            lang={lang}
+            blogPosts={blogPosts}
+            onAddBlogPost={handleAddBlogPost}
+            onUpdateBlogPost={handleUpdateBlogPost}
+            onDeleteBlogPost={handleDeleteBlogPost}
+            onAddComment={handleAddBlogComment}
+            onLikePost={handleLikeBlogPost}
+          />
+        ) : (
+          <BlogPortal
+            posts={blogPosts}
+            onAddPost={handleAddBlogPost}
+            onUpdatePost={handleUpdateBlogPost}
+            onDeletePost={handleDeleteBlogPost}
             lang={lang}
           />
         )}
