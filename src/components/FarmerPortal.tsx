@@ -13,8 +13,8 @@ import {
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend, BarChart, Bar, AreaChart, Area 
 } from "recharts";
-import { Hive, Inspection, Harvest, Order, Expense, BlogPost } from "../types";
-import { BookOpen, Edit3, MessageCircle, ThumbsUp, Check } from "lucide-react";
+import { Hive, Inspection, Harvest, Order, Expense, BlogPost, Product } from "../types";
+import { BookOpen, Edit3, MessageCircle, ThumbsUp, Check, Search, Filter, ShieldCheck, Truck, Receipt, CheckCircle2, ChevronRight, Mail, Phone, Sparkles as SparklesIcon } from "lucide-react";
 
 interface FarmerPortalProps {
   hives: Hive[];
@@ -28,6 +28,8 @@ interface FarmerPortalProps {
   onAddExpense?: (e: Expense) => void;
   orders: Order[];
   onUpdateOrderStatus: (ordId: string, status: Order['status']) => void;
+  products?: Product[];
+  onAddOrder?: (o: Order) => void;
   lang?: 'EN' | 'SW';
   blogPosts: BlogPost[];
   onAddBlogPost: (p: BlogPost) => void;
@@ -51,6 +53,8 @@ export function FarmerPortal({
   harvests, onAddHarvest, 
   expenses = [], onAddExpense,
   orders, onUpdateOrderStatus,
+  products = [],
+  onAddOrder,
   lang = 'EN',
   blogPosts = [],
   onAddBlogPost,
@@ -61,6 +65,153 @@ export function FarmerPortal({
 }: FarmerPortalProps) {
   // Navigation tabs of farmer manager
   const [activeSubTab, setActiveSubTab] = useState<'hives' | 'inspections' | 'harvests' | 'expenses' | 'orders' | 'sales' | 'analytics' | 'blog'>('hives');
+
+  // Customer Orders Dashboard Active filtering states
+  const [orderSearchText, setOrderSearchText] = useState("");
+  const [orderStatusFilter, setOrderStatusFilter] = useState<'All' | 'Pending' | 'Shipped' | 'Delivered' | 'Paid'>('All');
+  const [showManualOrderForm, setShowManualOrderForm] = useState(false);
+  const [activeInvoiceOrder, setActiveInvoiceOrder] = useState<Order | null>(null);
+
+  // Manual Offline Order Booking Form state
+  const [manualCustomerName, setManualCustomerName] = useState("");
+  const [manualCustomerEmail, setManualCustomerEmail] = useState("");
+  const [manualCustomerPhone, setManualCustomerPhone] = useState("");
+  const [manualShippingAddress, setManualShippingAddress] = useState("");
+  const [manualProductId, setManualProductId] = useState("");
+  const [manualQuantity, setManualQuantity] = useState(1);
+  const [manualGateway, setManualGateway] = useState<'cash' | 'mpesa' | 'bank'>('cash');
+  const [manualFormError, setManualFormError] = useState("");
+
+  // Persistent courier ship trackings and simulated SMS dispatch notes
+  const [orderTrackings, setOrderTrackings] = useState<Record<string, { carrier: string; trackingCode: string; logs: string[] }>>(() => {
+    const saved = localStorage.getItem("beehive_orders_tracking");
+    return saved ? JSON.parse(saved) : {};
+  });
+
+  const [shippingCarrierInput, setShippingCarrierInput] = useState("");
+  const [trackingCodeInput, setTrackingCodeInput] = useState("");
+  const [visualToastMessage, setVisualToastMessage] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem("beehive_orders_tracking", JSON.stringify(orderTrackings));
+  }, [orderTrackings]);
+
+  // Dispatch notification action
+  const handleDispatchNotification = (orderId: string, type: 'SMS' | 'Email') => {
+    const matchedOrder = orders.find(o => o.id === orderId);
+    if (!matchedOrder) return;
+
+    const timestamp = new Date().toLocaleTimeString();
+    const alertMsg = type === 'SMS' 
+      ? `[SYSTEM LOG - ${timestamp}] Dispatched SMS dispatch alert via Safaricom SMS Gateway to ${matchedOrder.customerPhone || "+254 700 000000"}...`
+      : `[SYSTEM LOG - ${timestamp}] Dispatched dispatch receipt and DHL billing slips to customer inbox: ${matchedOrder.customerEmail}...`;
+
+    setOrderTrackings(prev => {
+      const existing = prev[orderId] || { carrier: "Unassigned Transit", trackingCode: "PENDING-LOG", logs: [] };
+      return {
+        ...prev,
+        [orderId]: {
+          ...existing,
+          logs: [...existing.logs, alertMsg]
+        }
+      };
+    });
+
+    setVisualToastMessage(`${type} notification successfully broadcast to ${matchedOrder.customerName}!`);
+    setTimeout(() => setVisualToastMessage(""), 4000);
+  };
+
+  const handleUpdateTransitDelivery = (orderId: string) => {
+    if (!shippingCarrierInput || !trackingCodeInput) return;
+
+    const timestamp = new Date().toLocaleTimeString();
+    const carrierLog = `[DISPATCH - ${timestamp}] Loaded into container transit with carrier: ${shippingCarrierInput}. Air Waybill Tracking Assigned: LGS-${trackingCodeInput}-KE.`;
+
+    setOrderTrackings(prev => {
+      const existing = prev[orderId] || { carrier: "", trackingCode: "", logs: [] };
+      return {
+        ...prev,
+        [orderId]: {
+          carrier: shippingCarrierInput,
+          trackingCode: trackingCodeInput,
+          logs: [...existing.logs, carrierLog]
+        }
+      };
+    });
+
+    setVisualToastMessage("Logistics details synchronized successfully!");
+    setTimeout(() => setVisualToastMessage(""), 4000);
+    setShippingCarrierInput("");
+    setTrackingCodeInput("");
+  };
+
+  const handleBookingManualOrderSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualCustomerName.trim()) {
+      setManualFormError("Customer Name is required.");
+      return;
+    }
+    if (!manualProductId) {
+      setManualFormError("Please select a physical bee product.");
+      return;
+    }
+    const matchedProd = products.find(p => p.id === manualProductId);
+    if (!matchedProd) {
+      setManualFormError("Product not found inside active inventory.");
+      return;
+    }
+    if (manualQuantity > matchedProd.stock) {
+      setManualFormError(`Insufficient stock! Only ${matchedProd.stock} items remaining in honeycomb pantry.`);
+      return;
+    }
+
+    setManualFormError("");
+    const orderId = "ord-man-" + Math.floor(1000 + Math.random() * 9000);
+    const subtotal = matchedProd.price * manualQuantity;
+
+    const manualOrder: Order = {
+      id: orderId,
+      customerName: manualCustomerName,
+      customerEmail: manualCustomerEmail || "offline-pantry-buyer@hiveglobal.co.ke",
+      customerPhone: manualCustomerPhone || "+254 712 000000",
+      items: [{
+        productId: matchedProd.id,
+        productName: matchedProd.name,
+        quantity: manualQuantity,
+        price: matchedProd.price
+      }],
+      total: Number((subtotal + 4.99).toFixed(2)),
+      status: manualGateway === 'cash' ? 'Paid' : 'Pending',
+      date: new Date().toISOString().split("T")[0],
+      shippingAddress: manualShippingAddress || "Over-The-Counter walk-in, Kenya Apiary Headquarters"
+    };
+
+    if (onAddOrder) {
+      onAddOrder(manualOrder);
+    }
+
+    // Set initial tracking log
+    const timestamp = new Date().toLocaleTimeString();
+    setOrderTrackings(prev => ({
+      ...prev,
+      [orderId]: {
+        carrier: "Over The Counter Sales Dept",
+        trackingCode: "OTC-LOCAL-PASS",
+        logs: [`[SYSTEM - ${timestamp}] Walk-in OTC manual order generated via HiveGlobal Farmer App panel. Gateway: ${manualGateway.toUpperCase()}.`]
+      }
+    }));
+
+    setManualCustomerName("");
+    setManualCustomerEmail("");
+    setManualCustomerPhone("");
+    setManualShippingAddress("");
+    setManualProductId("");
+    setManualQuantity(1);
+    setManualGateway('cash');
+    setShowManualOrderForm(false);
+    setVisualToastMessage(`OTC Order ${orderId} registered successfully!`);
+    setTimeout(() => setVisualToastMessage(""), 4000);
+  };
 
   // Blog management states
   const [blogShowForm, setBlogShowForm] = useState(false);
@@ -1543,72 +1694,519 @@ export function FarmerPortal({
 
       {/* CLIENT PURCHASES PIPELINE */}
       {activeSubTab === 'orders' && (
-        <div className="bg-white border border-amber-100 rounded-3xl p-6 shadow-xs space-y-4">
-          <div className="flex justify-between items-center">
+        <div className="bg-white border border-amber-100 rounded-3xl p-6 shadow-xs space-y-6 text-left">
+          
+          {/* Visual toast messaging alerts */}
+          {visualToastMessage && (
+            <div className="p-3 bg-emerald-600 text-white font-extrabold text-xs rounded-2xl animate-in zoom-in-95 duration-200 flex items-center justify-between shadow-lg">
+              <span>🎉 {visualToastMessage}</span>
+              <button 
+                onClick={() => setVisualToastMessage("")} 
+                className="font-bold leading-none select-none pl-3 text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+          )}
+
+          {/* Action Header Card Block */}
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-amber-50 pb-4">
             <div>
-              <h3 className="font-bold text-gray-950 text-sm">Customer incoming Orders pipeline</h3>
-              <p className="text-xs text-gray-400">Track mock-payments, shipping address queue, and honey logistics</p>
+              <h3 className="font-bold text-[#1A4D2E] text-sm">Customer Incoming Orders pipeline</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Disburse post logistics, coordinate secure Visa payments, and print compliant receipts</p>
+            </div>
+            <button
+              onClick={() => {
+                setShowManualOrderForm(!showManualOrderForm);
+                setManualFormError("");
+              }}
+              className="px-4 py-2 bg-[#1A4D2E] hover:bg-amber-500 text-white hover:text-black rounded-xl text-xs font-extrabold tracking-wide transition duration-150 flex items-center gap-1.5 self-start cursor-pointer border-2 border-transparent hover:border-[#1A4D2E]"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>{showManualOrderForm ? "Hide OTC Form" : "Book Offline OTC Sale"}</span>
+            </button>
+          </div>
+
+          {/* Interactive Statistics Overview row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-amber-500/5 border border-amber-500/10 p-3.5 rounded-2xl flex flex-col justify-between">
+              <span className="text-[9px] uppercase font-mono tracking-wider text-gray-400 font-bold leading-none">Gross Shop revenues</span>
+              <strong className="text-base font-black text-[#1A4D2E] font-mono mt-1.5 block">
+                ${orders.reduce((sum, o) => sum + o.total, 0).toFixed(2)}
+              </strong>
+            </div>
+            <div className="bg-amber-505/5 border border-amber-505/10 p-3.5 rounded-2xl flex flex-col justify-between">
+              <span className="text-[9px] uppercase font-mono tracking-wider text-gray-400 font-bold leading-none">Pipeline In-Transit</span>
+              <strong className="text-base font-black text-amber-700 font-mono mt-1.5 block">
+                {orders.filter(o => o.status === 'Shipped').length} / {orders.length}
+              </strong>
+            </div>
+            <div className="bg-sky-500/5 border border-sky-500/10 p-3.5 rounded-2xl flex flex-col justify-between">
+              <span className="text-[9px] uppercase font-mono tracking-wider text-gray-400 font-bold leading-none">Bestselling Crop</span>
+              <strong className="text-[10px] font-black text-slate-800 font-mono mt-1.5 block truncate uppercase" title={(() => {
+                const counts: Record<string, number> = {};
+                orders.forEach(o => o.items.forEach(it => { counts[it.productName] = (counts[it.productName] || 0) + it.quantity; }));
+                let champ = "No Orders";
+                let topCount = 0;
+                Object.entries(counts).forEach(([name, count]) => { if (count > topCount) { champ = name; topCount = count; } });
+                return champ;
+              })()}>
+                {(() => {
+                  const counts: Record<string, number> = {};
+                  orders.forEach(o => o.items.forEach(it => { counts[it.productName] = (counts[it.productName] || 0) + it.quantity; }));
+                  let champ = "No Orders";
+                  let topCount = 0;
+                  Object.entries(counts).forEach(([name, count]) => { if (count > topCount) { champ = name; topCount = count; } });
+                  return champ;
+                })()}
+              </strong>
+            </div>
+            <div className="bg-red-500/5 border border-red-500/10 p-3.5 rounded-2xl flex flex-col justify-between">
+              <span className="text-[9px] uppercase font-mono tracking-wider text-gray-400 font-bold leading-none">Low-stock Alert</span>
+              <strong className={`text-base font-black font-mono mt-1.5 block ${products.filter(p => p.stock < 20).length > 0 ? "text-red-500 animate-pulse" : "text-gray-400"}`}>
+                {products.filter(p => p.stock < 15).length} Warning Lots
+              </strong>
             </div>
           </div>
 
+          {/* Expandable Manual walking / walk-in booking sale form */}
+          {showManualOrderForm && (
+            <form onSubmit={handleBookingManualOrderSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-amber-50/15 border border-amber-200/50 p-5 rounded-2xl animate-in slide-in-from-top-4 duration-300 text-left">
+              <div className="md:col-span-2 flex justify-between items-center border-b border-amber-100 pb-2">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                  <Receipt className="w-4 h-4 text-amber-500" />
+                  <span>Book Offline / Over-The-Counter Honey Sale</span>
+                </h4>
+                <button 
+                  type="button" 
+                  onClick={() => setShowManualOrderForm(false)}
+                  className="text-xs font-bold text-gray-400 hover:text-amber-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+              {manualFormError && (
+                <div className="md:col-span-2 p-2.5 bg-red-50 border border-red-150 text-red-700 text-xs font-semibold rounded-lg">
+                  ⚠️ {manualFormError}
+                </div>
+              )}
+              <div>
+                <label className="text-[10px] uppercase font-bold text-gray-500 block mb-1">Customer Full Name (Required)</label>
+                <input 
+                  type="text" 
+                  required
+                  placeholder="e.g. John Kamau"
+                  value={manualCustomerName}
+                  onChange={(e) => setManualCustomerName(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-xl focus:outline-amber-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-gray-500 block mb-1">Email Address</label>
+                <input 
+                  type="email" 
+                  placeholder="customer@example.com"
+                  value={manualCustomerEmail}
+                  onChange={(e) => setManualCustomerEmail(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-xl focus:outline-amber-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-gray-500 block mb-1">Mobile Contact Phone</label>
+                <input 
+                  type="tel" 
+                  placeholder="e.g. +254 712 345678"
+                  value={manualCustomerPhone}
+                  onChange={(e) => setManualCustomerPhone(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-xl focus:outline-amber-500"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-gray-500 block mb-1">API Product Select (Required)</label>
+                <select 
+                  required
+                  value={manualProductId}
+                  onChange={(e) => setManualProductId(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-xl focus:outline-amber-500 font-medium"
+                >
+                  <option value="">-- Choose Product --</option>
+                  {products.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} (${p.price.toFixed(2)} - Stock: {p.stock})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-gray-500 block mb-1">Purchase Item Quantity</label>
+                <input 
+                  type="number" 
+                  min={1}
+                  value={manualQuantity}
+                  onChange={(e) => setManualQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-xl focus:outline-amber-500 font-bold"
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-gray-500 block mb-1">Payment Method</label>
+                <div className="flex gap-2.5">
+                  {(['cash', 'mpesa', 'bank'] as const).map(gw => (
+                    <button
+                      key={gw}
+                      type="button"
+                      onClick={() => setManualGateway(gw)}
+                      className={`flex-1 py-2 rounded-xl text-xs font-bold uppercase transition border cursor-pointer ${
+                        manualGateway === gw 
+                          ? 'bg-amber-100 border-amber-500 text-amber-900 font-extrabold' 
+                          : 'bg-white border-gray-200 text-gray-605 hover:bg-slate-50'
+                      }`}
+                    >
+                      {gw}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-[10px] uppercase font-bold text-gray-500 block mb-1">Delivery Destination / Handover Address</label>
+                <textarea 
+                  rows={2}
+                  placeholder="Handed over directly in local Apiary branch / Nairobi outlet address"
+                  value={manualShippingAddress}
+                  onChange={(e) => setManualShippingAddress(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-gray-200 rounded-xl focus:outline-amber-500 resize-none"
+                />
+              </div>
+              <div className="md:col-span-2 pt-1">
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-[#1A4D2E] hover:bg-amber-500 text-white hover:text-black font-extrabold text-xs rounded-xl transition uppercase cursor-pointer flex items-center justify-center gap-1.5 border-2 border-transparent hover:border-[#1A4D2E]"
+                >
+                  <CheckCircle2 className="w-4 h-4 cursor-pointer" />
+                  <span>Log OTC Checkout & Dispatch Stock</span>
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Quick Search and Filter Buttons Row */}
+          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-amber-50/10 border border-amber-100 p-4 rounded-3xl">
+            <div className="relative w-full sm:max-w-xs shrink-0">
+              <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+                <Search className="w-4 h-4" />
+              </span>
+              <input
+                type="text"
+                placeholder="Search Client Name / Invoice code..."
+                value={orderSearchText}
+                onChange={(e) => setOrderSearchText(e.target.value)}
+                className="w-full bg-white border border-gray-200 pl-9 pr-4 py-2 text-xs rounded-xl focus:outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-500 text-gray-800"
+              />
+            </div>
+
+            <div className="flex gap-1 overflow-x-auto w-full sm:w-auto shrink-0 py-0.5">
+              {(['All', 'Pending', 'Paid', 'Shipped', 'Delivered'] as const).map(tab => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setOrderStatusFilter(tab)}
+                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase shrink-0 transition duration-150 cursor-pointer ${
+                    orderStatusFilter === tab 
+                      ? 'bg-amber-500 text-black shadow-xs font-black' 
+                      : 'bg-white border text-gray-500 hover:border-amber-300 hover:bg-slate-50'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Customer incoming Orders listings */}
           <div className="space-y-4">
-            {orders.length === 0 ? (
-              <div className="text-center py-16 border border-dashed border-amber-100 rounded-2xl">
-                <p className="text-xs text-gray-400 font-semibold">No customer checks logged yet. Set up purchases inside the visitor storefront!</p>
+            {orders.filter(o => {
+              const matchesSearch = o.customerName.toLowerCase().includes(orderSearchText.toLowerCase()) ||
+                                    o.id.toLowerCase().includes(orderSearchText.toLowerCase()) ||
+                                    o.customerEmail.toLowerCase().includes(orderSearchText.toLowerCase());
+              const matchesStatus = orderStatusFilter === 'All' ? true : o.status === orderStatusFilter;
+              return matchesSearch && matchesStatus;
+            }).length === 0 ? (
+              <div className="text-center py-16 border border-dashed border-amber-100 rounded-2xl bg-amber-50/5">
+                <p className="text-xs text-gray-400 font-semibold">No buyer logs found matching current search indices.</p>
               </div>
             ) : (
-              orders.map((o) => (
-                <div key={o.id} className="border border-amber-150 rounded-2xl p-5 bg-amber-50/15 text-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                  {/* Left Column: buyer contacts */}
-                  <div className="space-y-1.5 flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[10px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                        {o.id}
-                      </span>
-                      <strong className="font-extrabold text-gray-950 block truncate">{o.customerName}</strong>
-                    </div>
-                    <p className="text-gray-400 text-[10px] block font-mono">{o.customerEmail} • {o.customerPhone || "no mobile"}</p>
-                    <p className="text-gray-600 text-[10px] truncate">Shipping Destination: <strong className="text-gray-700 font-semibold">{o.shippingAddress}</strong></p>
-                  </div>
-
-                  {/* Middle: basket overview */}
-                  <div className="flex-1 min-w-[200px] space-y-1 bg-white border border-amber-100/50 p-3 rounded-xl shadow-xs">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Basket Details</p>
-                    {o.items.map((item, id) => (
-                      <div key={id} className="flex justify-between text-gray-700 font-medium text-[11px]">
-                        <span>{item.quantity}x {item.productName}</span>
-                        <span className="font-mono text-gray-500">${item.price.toFixed(2)}</span>
+              orders.filter(o => {
+                const matchesSearch = o.customerName.toLowerCase().includes(orderSearchText.toLowerCase()) ||
+                                      o.id.toLowerCase().includes(orderSearchText.toLowerCase()) ||
+                                      o.customerEmail.toLowerCase().includes(orderSearchText.toLowerCase());
+                const matchesStatus = orderStatusFilter === 'All' ? true : o.status === orderStatusFilter;
+                return matchesSearch && matchesStatus;
+              }).map((o) => {
+                const tracking = orderTrackings[o.id];
+                return (
+                  <div key={o.id} className="border border-amber-100 rounded-3xl p-5 bg-white text-xs flex flex-col md:flex-row md:items-center md:justify-between gap-6 transition-all hover:shadow-md border-l-4 border-l-[#1A4D2E]/90">
+                    {/* Left Column: buyer contacts */}
+                    <div className="space-y-1 .5 flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[9px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-250">
+                          {o.id}
+                        </span>
+                        <strong className="font-extrabold text-gray-950 block truncate text-sm">{o.customerName}</strong>
                       </div>
-                    ))}
-                  </div>
-
-                  {/* Right Status Actions panel */}
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 md:text-right shrink-0">
-                    <div>
-                      <span className="text-[10px] text-gray-400 block font-semibold uppercase font-mono">Invoice Total</span>
-                      <strong className="text-sm font-bold block bg-amber-100/50 p-1.5 rounded-lg border border-amber-200">${o.total.toFixed(2)}</strong>
+                      <p className="text-gray-400 text-[10px] block font-mono leading-none mt-1">{o.customerEmail} • {o.customerPhone || "no mobile contact"}</p>
+                      <p className="text-gray-650 text-[10px] truncate flex items-center gap-1 mt-1 font-medium">
+                        <MapPin className="w-3 h-3 text-amber-500 shrink-0" />
+                        <span>Address: <strong className="text-gray-750 font-bold">{o.shippingAddress}</strong></span>
+                      </p>
+                      {tracking && (
+                        <div className="inline-flex items-center gap-1.5 text-[9px] bg-blue-50 text-blue-800 border border-blue-200 px-2 py-0.5 rounded mt-1 font-mono uppercase font-black">
+                          <Truck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                          <span>Dispatch Route: {tracking.carrier} ({tracking.trackingCode})</span>
+                        </div>
+                      )}
                     </div>
 
-                    <div className="space-y-1.5">
-                      <span className="text-[9px] uppercase font-mono tracking-wider text-gray-400 block font-bold">Status Action</span>
+                    {/* Middle: basket overview */}
+                    <div className="flex-1 min-w-[200px] space-y-1 text-left bg-stone-50 border border-amber-100 p-3.5 rounded-2xl shadow-xs">
+                      <p className="text-[9px] font-black uppercase tracking-widest text-[#1A4D2E] mb-1 leading-none">Artisan items ({o.items.reduce((sum, item) => sum + item.quantity, 0)})</p>
+                      {o.items.map((item, id) => (
+                        <div key={id} className="flex justify-between text-gray-700 font-bold text-[11px] leading-relaxed">
+                          <span>{item.quantity}x {item.productName}</span>
+                          <span className="font-mono text-gray-400">${item.price.toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Right Status Actions panel */}
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3.5 md:text-right shrink-0 border-t border-dashed md:border-t-0 pt-3 md:pt-0 justify-between md:justify-end">
+                      <div className="text-left md:text-right">
+                        <span className="text-[9px] text-gray-400 block font-bold uppercase font-mono tracking-widest">Grand total</span>
+                        <strong className="text-sm font-black block text-gray-900 border-amber-200">${o.total.toFixed(2)}</strong>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 self-start sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => setActiveInvoiceOrder(o)}
+                          className="px-3 py-2 bg-amber-50 hover:bg-amber-100 border border-amber-250 text-amber-900 font-extrabold uppercase tracking-wide text-[9.5px] rounded-xl transition cursor-pointer"
+                        >
+                          Invoice Slip
+                        </button>
+                        <select
+                          value={o.status}
+                          onChange={(e) => onUpdateOrderStatus(o.id, e.target.value as Order['status'])}
+                          className={`text-[9.5px] font-black p-2 rounded-xl border focus:outline-none uppercase ${
+                            o.status === "Delivered" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : 
+                            o.status === "Shipped" ? "bg-blue-50 text-blue-800 border-blue-200" :
+                            "bg-amber-100 text-amber-800 border-amber-200"
+                          }`}
+                        >
+                          <option value="Pending">Pending</option>
+                          <option value="Paid">Paid</option>
+                          <option value="Shipped">Shipped</option>
+                          <option value="Delivered">Delivered</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* HIGH-FIDELITY DETAILED INVOICE SHEET OVERLAY */}
+          {activeInvoiceOrder && (() => {
+            const hasTracking = orderTrackings[activeInvoiceOrder.id];
+            return (
+              <div className="fixed inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                <div className="bg-[#FAF9F5] border-2 border-amber-900/10 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6 md:p-8 relative shadow-2xl space-y-6 text-left">
+                  {/* Close button */}
+                  <button 
+                    onClick={() => setActiveInvoiceOrder(null)}
+                    className="absolute top-4 right-4 text-gray-400 hover:text-amber-900 border border-gray-200 hover:bg-white rounded-lg p-1.5 transition"
+                  >
+                    ✕
+                  </button>
+
+                  {/* Receipt Header */}
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b-2 border-dashed border-amber-900/10 pb-6">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xl">📜</span>
+                        <h4 className="font-display font-black text-[#1A4D2E] tracking-tight uppercase text-sm">HIVEGLOBAL MERCHANDISE SLIP</h4>
+                        <span className="text-[9px] bg-emerald-50 text-emerald-700 px-1.5 py-0.2 rounded font-mono font-bold border border-emerald-200">OFFICIAL PAID</span>
+                      </div>
+                      <p className="text-[10px] text-gray-400 font-mono mt-1">Invoice ID: {activeInvoiceOrder.id} • Issued: {activeInvoiceOrder.date}</p>
+                    </div>
+                    <div className="md:text-right">
+                      <span className="text-[8px] text-gray-400 uppercase tracking-widest font-mono font-bold block mb-1">Status Workflow</span>
                       <select
-                        value={o.status}
-                        onChange={(e) => onUpdateOrderStatus(o.id, e.target.value as Order['status'])}
-                        className={`text-[10px] font-bold p-1.5 rounded-lg border focus:outline-none uppercase ${
-                          o.status === "Delivered" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-amber-100 text-amber-700 border-amber-200"
+                        value={activeInvoiceOrder.status}
+                        onChange={(e) => {
+                          onUpdateOrderStatus(activeInvoiceOrder.id, e.target.value as Order['status']);
+                          setActiveInvoiceOrder(prev => prev ? { ...prev, status: e.target.value as Order['status'] } : null);
+                        }}
+                        className={`text-xs font-black p-2 rounded-xl border focus:outline-none uppercase ${
+                          activeInvoiceOrder.status === "Delivered" ? "bg-emerald-50 border-emerald-200 text-emerald-800" :
+                          activeInvoiceOrder.status === "Shipped" ? "bg-blue-50 border-blue-200 text-blue-700" :
+                          activeInvoiceOrder.status === "Paid" ? "bg-[#1A4D2E] border-[#1A4D2E] text-white" :
+                          "bg-amber-100 border-amber-300 text-amber-800"
                         }`}
                       >
                         <option value="Pending">Pending</option>
+                        <option value="Paid">Paid</option>
                         <option value="Shipped">Shipped</option>
                         <option value="Delivered">Delivered</option>
-                        <option value="Paid">Paid</option>
                       </select>
                     </div>
                   </div>
+
+                  {/* Customer Information Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-white p-4 rounded-2xl border border-amber-900/5 text-xs shadow-xs">
+                    <div>
+                      <h5 className="font-bold text-gray-950 mb-2 uppercase tracking-wide text-[10px] text-amber-900/80">Buyer Credentials</h5>
+                      <p className="flex items-center gap-2 text-gray-700 font-bold my-1">
+                        <User className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <span>{activeInvoiceOrder.customerName}</span>
+                      </p>
+                      <p className="flex items-center gap-2 text-gray-700 font-mono my-1 text-[11px]">
+                        <Mail className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <span>{activeInvoiceOrder.customerEmail}</span>
+                      </p>
+                      <p className="flex items-center gap-2 text-gray-700 font-mono my-1 text-[11px]">
+                        <Phone className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+                        <span>{activeInvoiceOrder.customerPhone || "N/A"}</span>
+                      </p>
+                    </div>
+                    <div>
+                      <h5 className="font-bold text-gray-950 mb-2 uppercase tracking-wide text-[10px] text-amber-900/80">Delivery Coordinates</h5>
+                      <p className="flex items-start gap-2 text-gray-700 font-bold leading-relaxed">
+                        <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />
+                        <span>{activeInvoiceOrder.shippingAddress}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Line items list */}
+                  <div className="space-y-2 bg-white p-4 rounded-2xl border border-amber-900/5 shadow-xs">
+                    <h5 className="font-bold text-[#1A4D2E] mb-2 uppercase tracking-wide text-[10px]">Artisan Goods Checkout</h5>
+                    {activeInvoiceOrder.items.map((it, idx) => (
+                      <div key={idx} className="flex justify-between text-xs text-gray-700 border-b border-gray-100 pb-2">
+                        <div>
+                          <strong className="text-[#1A4D2E] font-extrabold">{it.quantity}x</strong>
+                          <span className="ml-2 font-semibold">{it.productName}</span>
+                        </div>
+                        <span className="font-mono font-bold text-gray-800">${(it.price * it.quantity).toFixed(2)}</span>
+                      </div>
+                    ))}
+                    <div className="flex justify-between items-center text-xs text-gray-500 pt-1">
+                      <span>Logistics Freight Handling</span>
+                      <span className="font-mono">$4.99</span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2.5 border-t border-amber-900/10 font-bold text-sm text-[#1A4D2E]">
+                      <span>Grand Total Recouped</span>
+                      <span className="font-mono text-base">${activeInvoiceOrder.total.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Logistics Tracking panel */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs space-y-4">
+                    <div className="flex items-center justify-between col-span-1">
+                      <h5 className="font-bold text-slate-800 uppercase tracking-wide text-[10px] flex items-center gap-1.5">
+                        <Truck className="w-4 h-4 text-blue-500" />
+                        <span>Logistics Courier Transit</span>
+                      </h5>
+                      {hasTracking ? (
+                        <span className="text-[10px] bg-blue-100 text-blue-800 border-blue-200 border px-2 py-0.5 rounded font-mono font-bold uppercase shrink-0">
+                          {hasTracking.carrier} • Air Waybill {hasTracking.trackingCode}
+                        </span>
+                      ) : (
+                        <span className="text-[10px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded font-bold uppercase shrink-0">
+                          Unassigned
+                        </span>
+                      )}
+                    </div>
+
+                    {!hasTracking ? (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 items-end">
+                        <div className="space-y-1">
+                          <label className="text-[9px] text-gray-500 uppercase font-black">Transporter</label>
+                          <input 
+                            type="text" 
+                            placeholder="DHL, Wells Fargo, G4S..." 
+                            value={shippingCarrierInput}
+                            onChange={(e) => setShippingCarrierInput(e.target.value)}
+                            className="w-full text-xs p-2 bg-white border border-gray-200 rounded-lg focus:outline-none"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] text-gray-500 uppercase font-black">Tracking Number</label>
+                          <input 
+                            type="text" 
+                            placeholder="e.g. DH-8321-KE" 
+                            value={trackingCodeInput}
+                            onChange={(e) => setTrackingCodeInput(e.target.value)}
+                            className="w-full text-xs p-2 bg-white border border-gray-200 rounded-lg focus:outline-none"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateTransitDelivery(activeInvoiceOrder.id)}
+                          className="py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg uppercase tracking-wide cursor-pointer transition"
+                        >
+                          Book Courier
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="bg-white/80 p-3 rounded-xl space-y-2 border border-slate-150 animate-in fade-in duration-200">
+                        <div className="flex justify-between items-center text-[10px] text-slate-700 font-bold border-b border-gray-150 pb-1">
+                          <span>Active Courier Transport Logs</span>
+                          <span className="text-[9px] text-gray-400 font-mono">Real-time Sync</span>
+                        </div>
+                        <div className="max-h-24 overflow-y-auto space-y-1 font-mono text-[9px] text-slate-650 leading-normal pr-1">
+                          {hasTracking.logs.map((log, lidx) => (
+                            <p key={lidx} className="border-l-2 border-amber-600 pl-1.5 py-0.5 bg-amber-500/5 whitespace-pre-wrap">{log}</p>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2.5 pt-1.5 border-t border-slate-100">
+                          <button
+                            type="button"
+                            onClick={() => handleDispatchNotification(activeInvoiceOrder.id, 'SMS')}
+                            className="py-1.5 bg-amber-500 hover:bg-[#1A4D2E] text-slate-950 hover:text-white font-extrabold uppercase text-[9px] rounded-lg tracking-wider text-center cursor-pointer"
+                          >
+                            📲 Send SMS Alert
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDispatchNotification(activeInvoiceOrder.id, 'Email')}
+                            className="py-1.5 bg-white hover:bg-amber-100 text-slate-700 font-extrabold uppercase text-[9px] rounded-lg border tracking-wider text-center cursor-pointer"
+                          >
+                            ✉️ email Bills PDF
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Print Sheet Guarantee banner */}
+                  <div className="flex justify-between items-center text-[10px] text-gray-400 font-mono font-bold leading-normal pt-2 border-t border-dashed border-gray-200">
+                    <span className="flex items-center gap-1">
+                      <ShieldCheck className="w-4 h-4 text-[#1A4D2E] shrink-0" />
+                      <span>KEBS & KRA INTEGRATED PACKET</span>
+                    </span>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        window.print();
+                      }}
+                      className="text-amber-800 hover:underline cursor-pointer bg-transparent border-0"
+                    >
+                      🖨️ Print Tax Slip
+                    </button>
+                  </div>
                 </div>
-              ))
-            )}
-          </div>
+              </div>
+            );
+          })()}
         </div>
       )}
 

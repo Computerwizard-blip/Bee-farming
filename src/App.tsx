@@ -355,6 +355,8 @@ export default function App() {
             onAddExpense={handleAddExpense}
             orders={orders}
             onUpdateOrderStatus={handleUpdateOrderStatus}
+            products={products}
+            onAddOrder={handleAddOrder}
             lang={lang}
             blogPosts={blogPosts}
             onAddBlogPost={handleAddBlogPost}

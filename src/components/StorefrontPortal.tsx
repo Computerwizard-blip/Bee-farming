@@ -130,6 +130,16 @@ export function StorefrontPortal({
   const [mpesaStatus, setMpesaStatus] = useState<'idle' | 'pushing' | 'awaiting_pin' | 'paid' | 'failed'>('idle');
   const [mpesaStatusMsg, setMpesaStatusMsg] = useState("");
 
+  // Credit Card Interactive states
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [cardName, setCardName] = useState("");
+  const [cardValidationError, setCardValidationError] = useState("");
+  const [cardFocused, setCardFocused] = useState<'number' | 'expiry' | 'cvv' | 'name' | null>(null);
+  const [cardProcessingStatus, setCardProcessingStatus] = useState<'idle' | 'verifying' | '3ds' | 'success' | 'failed'>('idle');
+  const [cardProcessingMsg, setCardProcessingMsg] = useState("");
+
   // Translation helper
   const t = (en: string, sw: string) => {
     return lang === 'SW' ? sw : en;
@@ -221,7 +231,7 @@ export function StorefrontPortal({
       price: item.product.price
     }));
 
-    const executeFinalizeOrder = () => {
+    const executeFinalizeOrder = (statusToSave: Order['status'] = 'Paid') => {
       const newOrder: Order = {
         id: orderId,
         customerName,
@@ -229,7 +239,7 @@ export function StorefrontPortal({
         customerPhone,
         items: newOrderItems,
         total: Number((getCartTotal() + 4.99).toFixed(2)),
-        status: paymentMethod === 'mpesa' ? 'Paid' : 'Pending',
+        status: statusToSave,
         date: new Date().toISOString().split("T")[0],
         shippingAddress
       };
@@ -239,6 +249,12 @@ export function StorefrontPortal({
       setCart([]);
       setCheckoutStep('success');
       setMpesaStatus('idle');
+      setCardProcessingStatus('idle');
+      // Clear card fields
+      setCardNumber("");
+      setCardExpiry("");
+      setCardCvv("");
+      setCardName("");
     };
 
     if (paymentMethod === 'mpesa') {
@@ -255,12 +271,54 @@ export function StorefrontPortal({
           setMpesaStatusMsg(`[SUCCESS] M-Pesa payment received! TXN ID: MP-KGM${Math.floor(100000 + Math.random() * 900000)}Y. Paid Ksh ${(Math.round((getCartTotal() + 4.99) * 128)).toLocaleString()} KES.`);
           
           setTimeout(() => {
-            executeFinalizeOrder();
+            executeFinalizeOrder('Paid');
           }, 1500);
         }, 2200);
       }, 1500);
     } else {
-      executeFinalizeOrder();
+      // Visa / Mastercard credit card authorization validation
+      const sanitizedNum = cardNumber.replace(/\s+/g, '');
+      if (sanitizedNum.length < 16) {
+        setCardValidationError("Please enter a valid 16-digit credit card number.");
+        return;
+      }
+      if (!/^\d{2}\/\d{2}$/.test(cardExpiry)) {
+        setCardValidationError("Please enter expiration date in MM/YY format.");
+        return;
+      }
+      // Simple validation for MM range 01-12
+      const [mm] = cardExpiry.split('/');
+      const monthNum = parseInt(mm, 10);
+      if (isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
+        setCardValidationError("Expiration month must be between 01 and 12.");
+        return;
+      }
+      if (cardCvv.length < 3) {
+        setCardValidationError("Please enter a valid 3-digit CVV security code.");
+        return;
+      }
+      if (!cardName.trim()) {
+        setCardValidationError("Please enter the name of the Cardholder as printed.");
+        return;
+      }
+
+      setCardValidationError("");
+      setCardProcessingStatus('verifying');
+      setCardProcessingMsg("[SECURE PAYWAY] Contacting global Visa/Mastercard processing clearinghouse...");
+
+      setTimeout(() => {
+        setCardProcessingStatus('3ds');
+        setCardProcessingMsg("[3D-SECURE INTERLOCK] Waiting for secure 2-Factor auth tokens from issuer bank...");
+
+        setTimeout(() => {
+          setCardProcessingStatus('success');
+          setCardProcessingMsg(`[AUTHENTICATED ✓] Authorized successfully! Reference TXN: CC-${Math.floor(1000000 + Math.random() * 9000000)}. Settling check...`);
+
+          setTimeout(() => {
+            executeFinalizeOrder('Paid');
+          }, 1500);
+        }, 2000);
+      }, 1500);
     }
   };
 
@@ -467,6 +525,14 @@ export function StorefrontPortal({
                 className={`px-4 py-1.5 rounded-xl text-xs font-semibold shrink-0 cursor-pointer ${typeFilter === 'beeswax' ? 'bg-amber-500 text-white shadow-sm' : 'bg-white border border-amber-200 text-amber-800 hover:bg-amber-50/50'}`}
               >
                 Beeswax Crafts
+              </button>
+
+              <button
+                onClick={() => setIsCartOpen(true)}
+                className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#1A4D2E] hover:bg-amber-500 text-white hover:text-[#1A4D2E] rounded-xl text-xs font-bold transition duration-150 cursor-pointer"
+              >
+                <ShoppingBag className="w-3.5 h-3.5" />
+                <span>{t("Basket", "Kikapu")} ({cart.reduce((sum, i) => sum + i.quantity, 0)})</span>
               </button>
             </div>
           </div>
@@ -1346,7 +1412,7 @@ export function StorefrontPortal({
 
               {/* Checkout shipping info form */}
               {checkoutStep === 'form' && (
-                <div className="relative">
+                <div className="relative text-left">
                   {mpesaStatus !== 'idle' ? (
                     <div className="p-8 text-center bg-amber-50/50 rounded-2xl border-2 border-amber-500/30 space-y-4 animate-pulse">
                       <div className="w-14 h-14 bg-amber-500 text-black font-black rounded-full flex items-center justify-center mx-auto text-xs animate-bounce">
@@ -1367,8 +1433,29 @@ export function StorefrontPortal({
                         {t("Do not close this panel. Confirm PIN on your Safaricom screen.", "Usipepese dirisha hili. Weka siri yako kwenye simu.")}
                       </p>
                     </div>
+                  ) : cardProcessingStatus !== 'idle' ? (
+                    <div className="p-8 text-center bg-emerald-50/60 rounded-2xl border-2 border-emerald-500/30 space-y-4 animate-in zoom-in-95 duration-200">
+                      <div className="w-14 h-14 bg-emerald-600 text-white font-black rounded-full flex items-center justify-center mx-auto text-[10px] animate-bounce shadow">
+                        VISA
+                      </div>
+                      <h4 className="text-sm font-bold text-emerald-950 uppercase tracking-wider">{t("SECURE PAYMENT NETWORK", "MTANDAO SALAMA WA MALIPO")}</h4>
+                      <p className="text-xs text-emerald-850 font-mono font-bold max-w-xs mx-auto leading-relaxed">
+                        {cardProcessingMsg}
+                      </p>
+                      <div className="w-full bg-emerald-100 h-1.5 rounded-full overflow-hidden">
+                        <div 
+                          className={`h-full bg-emerald-650 transition-all duration-1000 ${
+                            cardProcessingStatus === 'verifying' ? 'w-1/3' : cardProcessingStatus === '3ds' ? 'w-2/3' : 'w-full'
+                          }`}
+                        />
+                      </div>
+                      <p className="text-[10px] text-gray-500 font-mono font-semibold uppercase flex items-center justify-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{t("SSL 256-BIT ENCRYPTION SECURED", "MALIPO YAMELINDWA NA SSL YA BITS 256")}</span>
+                      </p>
+                    </div>
                   ) : (
-                    <form onSubmit={handleCheckoutSubmit} className="space-y-3.5">
+                    <form onSubmit={handleCheckoutSubmit} className="space-y-4 text-left">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-amber-850 bg-amber-50 p-2.5 rounded-lg border border-amber-100 flex items-center gap-1.5">
                         <CreditCard className="w-4 h-4 text-amber-500" />
                         <span>{t("Provide Shipping & Delivery Contact", "Weka Maelezo ya Uwasilishaji")}</span>
@@ -1380,7 +1467,10 @@ export function StorefrontPortal({
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             type="button"
-                            onClick={() => setPaymentMethod('mpesa')}
+                            onClick={() => {
+                              setPaymentMethod('mpesa');
+                              setCardValidationError("");
+                            }}
                             className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-1 cursor-pointer ${
                               paymentMethod === 'mpesa' 
                                 ? 'bg-amber-100 border-amber-500 text-amber-900' 
@@ -1392,7 +1482,10 @@ export function StorefrontPortal({
                           </button>
                           <button
                             type="button"
-                            onClick={() => setPaymentMethod('card')}
+                            onClick={() => {
+                              setPaymentMethod('card');
+                              setCardValidationError("");
+                            }}
                             className={`p-3 rounded-xl border text-xs font-bold transition flex flex-col items-center gap-1 cursor-pointer ${
                               paymentMethod === 'card' 
                                 ? 'bg-amber-100 border-amber-500 text-amber-900' 
@@ -1405,68 +1498,216 @@ export function StorefrontPortal({
                         </div>
                       </div>
 
-                      <div>
-                        <label className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">{t("Your Full Name", "Jina Lako Kamili")}</label>
-                        <input 
-                          type="text" 
-                          required
-                          value={customerName}
-                          onChange={(e) => setCustomerName(e.target.value)}
-                          placeholder="Jane Nyambura"
-                          className="w-full text-xs p-2.5 bg-amber-55/20 border border-amber-250 rounded-xl focus:outline-amber-400 placeholder-amber-900/30"
-                        />
-                      </div>
+                      {/* Interactive Credit Card visual representation */}
+                      {paymentMethod === 'card' && (
+                        <div className="space-y-4 animate-in slide-in-from-top-4 duration-300">
+                          <div 
+                            className="w-full h-44 rounded-2xl p-4 text-white relative overflow-hidden shadow-md transition-all duration-300 transform font-mono flex flex-col justify-between border border-blue-400/20"
+                            style={{
+                              background: "linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #172554 100%)",
+                            }}
+                          >
+                            <div className="absolute -right-8 -bottom-8 w-32 h-32 bg-blue-400/20 rounded-full blur-2xl pointer-events-none" />
+                            <div className="absolute -left-8 -top-8 w-36 h-36 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none" />
 
-                      <div className="grid grid-cols-2 gap-3">
+                            <div className="flex justify-between items-start z-10 relative">
+                              <span className="text-[9px] uppercase tracking-widest font-semibold text-blue-200 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                                HiveGlobal Secure Card
+                              </span>
+                              <span className="text-sm font-black italic tracking-wide text-white/90">
+                                {cardNumber.startsWith('4') ? "VISA" : cardNumber.startsWith('5') ? "MasterCard" : "SECURE BILLING"}
+                              </span>
+                            </div>
+
+                            <div className="w-9 h-7 bg-amber-300/30 border border-amber-300/30 rounded-md flex flex-col justify-between h-fit gap-[2px] p-1.5 opacity-80 z-10 relative">
+                              <div className="h-[2px] bg-amber-400/50 rounded" />
+                              <div className="h-[2px] bg-amber-400/50 rounded" />
+                              <div className="h-[2px] bg-amber-400/50 rounded" />
+                            </div>
+
+                            <div className="text-sm md:text-base font-bold tracking-widest text-center my-1 z-10 relative filter drop-shadow select-all bg-black/10 py-1 rounded">
+                              {cardNumber || "•••• •••• •••• ••••"}
+                            </div>
+
+                            <div className="flex justify-between items-end text-[9px] uppercase font-mono z-10 relative text-blue-100">
+                              <div className="max-w-[50%]">
+                                <span className="text-[7px] text-blue-300 block uppercase leading-none mb-1">Cardholder</span>
+                                <span className="font-semibold block truncate">
+                                  {cardName || "JANE NYAMBURA"}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[7px] text-blue-300 block uppercase leading-none mb-1">Expires</span>
+                                <span className="font-semibold block text-right">
+                                  {cardExpiry || "MM/YY"}
+                                </span>
+                              </div>
+                              <div className="text-right">
+                                <span className="text-[7px] text-blue-300 block uppercase leading-none mb-1">CVV</span>
+                                <span className="font-semibold block text-right bg-white/15 px-1 py-0.5 rounded">
+                                  {cardCvv || "•••"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Error validation block */}
+                          {cardValidationError && (
+                            <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-[11px] rounded-lg font-semibold animate-in zoom-in-95 duration-150">
+                              ⚠️ {cardValidationError}
+                            </div>
+                          )}
+
+                          {/* Card Input fields */}
+                          <div className="grid grid-cols-1 gap-3 pt-1 border-t border-gray-100">
+                            <div>
+                              <label className="text-[9px] uppercase font-bold text-gray-500 block mb-1">
+                                {t("Name on Card", "Jina Kwenye Kadi")}
+                              </label>
+                              <input 
+                                type="text"
+                                placeholder="JANE NYAMBURA"
+                                value={cardName}
+                                onChange={(e) => {
+                                  setCardName(e.target.value.toUpperCase());
+                                  setCardValidationError("");
+                                }}
+                                className="w-full text-xs p-2 bg-amber-55/15 border border-amber-250 rounded-xl focus:outline-amber-400 font-bold uppercase placeholder-gray-400/50"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[9px] uppercase font-bold text-gray-500 block mb-1">
+                                {t("Card Number (16-Digit)", "Namba ya Kadi")}
+                              </label>
+                              <input 
+                                type="text"
+                                maxLength={19}
+                                placeholder="4123 4567 1234 5678"
+                                value={cardNumber}
+                                onChange={(e) => {
+                                  let val = e.target.value.replace(/\D/g, '');
+                                  if (val.length > 16) val = val.substring(0, 16);
+                                  const formatted = val.match(/.{1,4}/g)?.join(' ') || val;
+                                  setCardNumber(formatted);
+                                  setCardValidationError("");
+                                }}
+                                className="w-full text-xs p-2 bg-amber-55/15 border border-amber-250 rounded-xl focus:outline-amber-400 font-mono font-bold tracking-widest placeholder-gray-300"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3.5">
+                              <div>
+                                <label className="text-[9px] uppercase font-bold text-gray-500 block mb-1">
+                                  {t("Expiry Date", "Tarehe ya Kwisha")}
+                                </label>
+                                <input 
+                                  type="text"
+                                  maxLength={5}
+                                  placeholder="MM/YY"
+                                  value={cardExpiry}
+                                  onChange={(e) => {
+                                    let val = e.target.value.replace(/\D/g, '');
+                                    if (val.length > 4) val = val.substring(0, 4);
+                                    if (val.length >= 2) {
+                                      val = val.substring(0, 2) + '/' + val.substring(2);
+                                    }
+                                    setCardExpiry(val);
+                                    setCardValidationError("");
+                                  }}
+                                  className="w-full text-xs p-2 bg-amber-55/15 border border-amber-250 rounded-xl focus:outline-amber-400 font-mono font-bold placeholder-gray-300"
+                                />
+                              </div>
+
+                              <div>
+                                <label className="text-[9px] uppercase font-bold text-gray-500 block mb-1">
+                                  {t("CVV Code", "Namba ya Usalama")}
+                                </label>
+                                <input 
+                                  type="password"
+                                  maxLength={3}
+                                  placeholder="•••"
+                                  value={cardCvv}
+                                  onChange={(e) => {
+                                    const val = e.target.value.replace(/\D/g, '').substring(0, 3);
+                                    setCardCvv(val);
+                                    setCardValidationError("");
+                                  }}
+                                  className="w-full text-xs p-2 bg-amber-55/15 border border-amber-250 rounded-xl focus:outline-amber-400 font-mono font-bold placeholder-gray-300"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Contact Shipping Section */}
+                      <div className="space-y-3.5 pt-2 border-t border-gray-150">
                         <div>
-                          <label className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">{t("Email Address", "Barua Pepe")}</label>
+                          <label className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">{t("Your Full Name", "Jina Lako Kamili")}</label>
                           <input 
-                            type="email" 
+                            type="text" 
                             required
-                            value={customerEmail}
-                            onChange={(e) => setCustomerEmail(e.target.value)}
-                            placeholder="nyambura@example.com"
+                            value={customerName}
+                            onChange={(e) => setCustomerName(e.target.value)}
+                            placeholder="Jane Nyambura"
                             className="w-full text-xs p-2.5 bg-amber-55/20 border border-amber-250 rounded-xl focus:outline-amber-400 placeholder-amber-900/30"
                           />
                         </div>
-                        <div>
-                          <label className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">
-                            {paymentMethod === 'mpesa' ? t("M-Pesa Mobile No", "Namba ya M-Pesa") : t("Phone (Optional)", "Simu ya Mkononi")}
-                          </label>
-                          <input 
-                            type="tel" 
-                            required={paymentMethod === 'mpesa'}
-                            value={customerPhone}
-                            onChange={(e) => setCustomerPhone(e.target.value)}
-                            placeholder="0712345678"
-                            className="w-full text-xs p-2.5 bg-amber-55/20 border border-amber-250 rounded-xl focus:outline-amber-400 placeholder-amber-900/30"
-                          />
-                        </div>
-                      </div>
 
-                      <div>
-                        <label className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">{t("Shipping Postal Address", "Anwani ya Kusafirisha")}</label>
-                        <textarea 
-                          required
-                          rows={2}
-                          value={shippingAddress}
-                          onChange={(e) => setShippingAddress(e.target.value)}
-                          placeholder={t("Nairobi City, Westlands, Woodvale Grove House 12...", "Mfano: Nakuru Town, Shabab Estate House G4...")}
-                          className="w-full text-xs p-2.5 bg-amber-55/20 border border-amber-250 rounded-xl focus:outline-amber-400 placeholder-amber-900/30 resize-none"
-                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">{t("Email Address", "Barua Pepe")}</label>
+                            <input 
+                              type="email" 
+                              required
+                              value={customerEmail}
+                              onChange={(e) => setCustomerEmail(e.target.value)}
+                              placeholder="nyambura@example.com"
+                              className="w-full text-xs p-2.5 bg-amber-55/20 border border-amber-250 rounded-xl focus:outline-amber-400 placeholder-amber-900/30"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">
+                              {paymentMethod === 'mpesa' ? t("M-Pesa Mobile No", "Namba ya M-Pesa") : t("Phone (Optional)", "Simu ya Mkononi")}
+                            </label>
+                            <input 
+                              type="tel" 
+                              required={paymentMethod === 'mpesa'}
+                              value={customerPhone}
+                              onChange={(e) => setCustomerPhone(e.target.value)}
+                              placeholder="0712345678"
+                              className="w-full text-xs p-2.5 bg-amber-55/20 border border-amber-250 rounded-xl focus:outline-amber-400 placeholder-amber-900/30"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] uppercase font-semibold text-gray-500 block mb-1">{t("Shipping Postal Address", "Anwani ya Kusafirisha")}</label>
+                          <textarea 
+                            required
+                            rows={2}
+                            value={shippingAddress}
+                            onChange={(e) => setShippingAddress(e.target.value)}
+                            placeholder={t("Nairobi City, Westlands, Woodvale Grove House 12...", "Mfano: Nakuru Town, Shabab Estate House G4...")}
+                            className="w-full text-xs p-2.5 bg-amber-55/20 border border-amber-250 rounded-xl focus:outline-amber-400 placeholder-amber-900/30 resize-none"
+                          />
+                        </div>
                       </div>
 
                       <div className="pt-2">
                         <button
                           type="submit"
-                          className="w-full py-3 bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs rounded-xl shadow-sm tracking-wide transition uppercase cursor-pointer"
+                          className="w-full py-3 bg-amber-550 hover:bg-amber-650 text-white font-extrabold text-xs rounded-xl shadow-md tracking-wider transition uppercase cursor-pointer flex items-center justify-center gap-1.5"
                         >
-                          {paymentMethod === 'mpesa' ? t("Request Safaricom STK Push", "Tuma Ombi la M-Pesa STK") : t("Authorize Simulated Transfer", "Thibitisha Malipo ya Jaribio")}
+                          <ShieldCheck className="w-4 h-4" />
+                          {paymentMethod === 'mpesa' ? t("Request Safaricom STK Push", "Tuma Ombi la M-Pesa STK") : t("Secure Checkout via Gateway", "Thibitisha kwa Kadi")}
                         </button>
                         <button
                           type="button"
                           onClick={() => setCheckoutStep('idle')}
-                          className="w-full text-center text-amber-700 hover:underline text-xs mt-3.5 cursor-pointer"
+                          className="w-full text-center text-amber-700 hover:underline text-xs mt-3.5 cursor-pointer font-bold"
                         >
                           {t("Return to Basket View", "Rudi Kwenye Kikapu")}
                         </button>
@@ -1548,6 +1789,20 @@ export function StorefrontPortal({
             )}
           </div>
         </div>
+      )}
+
+      {/* Floating Shopping Cart Drawer Action Badge */}
+      {!isCartOpen && cart.length > 0 && (
+        <button
+          onClick={() => setIsCartOpen(true)}
+          className="fixed bottom-24 right-5 p-4 bg-amber-500 hover:bg-amber-600 text-white rounded-full shadow-2xl hover:shadow-[0_10px_25px_-5px_rgba(245,158,11,0.5)] transition-all duration-300 hover:scale-105 z-40 flex items-center justify-center gap-2 border-2 border-white group cursor-pointer"
+          title="Open Honey Basket"
+        >
+          <ShoppingBag className="w-5 h-5 group-hover:rotate-12 transition-transform duration-200" />
+          <span className="text-[10px] font-black font-mono bg-[#1A4D2E] text-[#FCD34D] px-2 py-0.5 rounded-full select-none">
+            {cart.reduce((sum, item) => sum + item.quantity, 0)}
+          </span>
+        </button>
       )}
     </div>
   );
