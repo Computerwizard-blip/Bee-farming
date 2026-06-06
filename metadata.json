@@ -1,0 +1,6 @@
+{
+  "name": "HiveGlobal",
+  "description": "Premium offline-capable bee farming platform and direct global marketplace. Connecting Kenyan smallholder apiarists with international bulk buyers with on-site logging, blockchain-verified lab results, and instant M-Pesa payouts.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

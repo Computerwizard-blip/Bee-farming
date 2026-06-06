@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;650;700;800;900&family=Poppins:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Poppins", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  
+  --color-honey-gold: #F4B400;
+  --color-forest-green: #1A4D2E;
+  --color-warm-charcoal: #2D2D2D;
+  --color-pollen-orange: #FF8C00;
+  
+  --color-amber-50: #FCF9F2;
+  --color-amber-100: #F9F1E2;
+  --color-amber-150: #F3E4C8;
+  --color-amber-200: #F4B400;
+  --color-amber-250: #FF8C00;
+  --color-amber-500: #F4B400;
+  --color-amber-600: #DDA500;
+  --color-amber-700: #A87E00;
+  --color-amber-950: #2D2D2D;
+}
+
+/* Base resets & typography for HiveGlobal */
+body {
+  background-color: #FCFBF7 !important;
+  color: #2D2D2D !important;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-display) !important;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #FCFBF7;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(26, 77, 46, 0.2);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #1A4D2E;
+}
+
+/* Clean cards and panels */
+.card-earthy {
+  background: #FFFFFF;
+  border: 1px solid rgba(26, 77, 46, 0.12);
+  box-shadow: 0 4px 12px rgba(45, 45, 45, 0.03);
+}
+
+.card-dark-field {
+  background: #1A4D2E;
+  color: #FFFFFF;
+}
+
+/* Animated Pulse/Grow classes */
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.8; transform: scale(1.02); }
+}
+.pulse-glow {
+  animation: pulseGlow 3s infinite ease-in-out;
+}
